@@ -1,0 +1,177 @@
+// Chairside data model.
+//
+// PORTABILITY MOAT (Principle 4): the Client is keyed to `contact` (phone/email),
+// NOT to a shop. The same person is recognised across shops, and their cut
+// history travels with them. This is enforced at the schema level via the unique
+// `contact` field — it is the one thing that stops this being a feature an
+// incumbent clones in a sprint.
+
+generator client {
+  provider      = "prisma-client-js"
+  // "native" for local dev; the explicit Debian/OpenSSL 3 target is the Linux
+  // build/deploy environment. Add your deploy target here if it differs.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  // SQLite for local dev. To deploy on Postgres, change provider to
+  // "postgresql" and point DATABASE_URL at your Postgres instance — the rest of
+  // the schema is portable as written.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Client — portable, shop-agnostic. Keyed to contact.
+// ---------------------------------------------------------------------------
+model Client {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String   @unique // phone OR email — the portable key across shops
+  hairType  String // straight | wavy | curly | coily
+  density   String // thin | medium | thick
+  faceShape String? // optional
+  createdAt DateTime @default(now())
+
+  briefs Brief[]
+  visits Visit[]
+}
+
+// ---------------------------------------------------------------------------
+// Shop & Barber.
+// ---------------------------------------------------------------------------
+model Shop {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // used in the shareable client link: /s/<slug>
+  createdAt DateTime @default(now())
+
+  barbers Barber[]
+  briefs  Brief[]
+  visits  Visit[]
+}
+
+model Barber {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// BaseStyle — the curated, barber-validated library. Carries an AUTHORED spec.
+// `defaultSpecJson` is the structured Spec serialised as JSON; client
+// customisation starts from it and adjusts structured params deterministically.
+// ---------------------------------------------------------------------------
+model BaseStyle {
+  id              String   @id @default(cuid())
+  name            String
+  description     String
+  referenceImage  String? // optional illustrative reference (URL or /public path)
+  defaultSpecJson String // authored Spec, serialised JSON — never inferred from an image
+  tags            String // comma-separated: length + use-case tags
+  barberValidated Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  specs StyleSpec[]
+}
+
+// ---------------------------------------------------------------------------
+// StyleSpec — a concrete, structured cut spec. Stored as discrete columns so it
+// is queryable and unambiguously structured (NOT a pixel-derived blob).
+// Guard values are stored as strings to allow "skin" / "scissor" alongside 0–8.
+// `summaryText` is DERIVED from these fields; `renderUrl` is illustrative only.
+// ---------------------------------------------------------------------------
+model StyleSpec {
+  id          String     @id @default(cuid())
+  baseStyleId String?
+  baseStyle   BaseStyle? @relation(fields: [baseStyleId], references: [id])
+
+  // Sides & back
+  sidesGuard String // "skin" | "0".."8" | "scissor"
+  fadeType   String // none | low | mid | high | skin | taper | burst | drop
+  fadeHeight String // low | mid | high
+
+  // Top
+  topMethod    String // clipper | scissor
+  topLengthMm  Int
+  topGuard     String? // optional guard equivalent
+  topStyle     String
+  topDirection String
+
+  // Finishing
+  neckline String
+  part     String
+  texture  String
+
+  // Beard (optional)
+  beardStyle    String? // none | stubble | ... (null/none = no beard)
+  beardLengthMm Int?
+
+  // Derived / illustrative
+  summaryText String // plain-language line, DERIVED from structured fields
+  renderUrl   String? // illustrative AI render ONLY — never read back into a spec
+
+  createdAt DateTime @default(now())
+
+  // A spec can play three roles on a brief (requested / barber counter / actual).
+  requestedInBriefs Brief[] @relation("RequestedSpec")
+  barberInBriefs    Brief[] @relation("BarberSpec")
+  actualInBriefs    Brief[] @relation("ActualSpec")
+}
+
+// ---------------------------------------------------------------------------
+// Brief — a client's request landing in a shop's queue.
+// ---------------------------------------------------------------------------
+model Brief {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
+  shopId   String
+  shop     Shop   @relation(fields: [shopId], references: [id])
+
+  requestedSpecId String
+  requestedSpec   StyleSpec @relation("RequestedSpec", fields: [requestedSpecId], references: [id])
+
+  useCaseTag String // new_barber | big_change | specific_complex_style | walk_in_to_regular
+  status     String @default("submitted") // submitted | seen | counter_proposed | completed
+
+  // Barber counter-proposal ("closest achievable on your hair") + note.
+  barberSpecId String?
+  barberSpec   StyleSpec? @relation("BarberSpec", fields: [barberSpecId], references: [id])
+  barberNote   String?
+
+  // What was ACTUALLY done at the chair (builds client history + barber record).
+  actualSpecId String?
+  actualSpec   StyleSpec? @relation("ActualSpec", fields: [actualSpecId], references: [id])
+
+  notes       String? // free-text from the client
+  createdAt   DateTime  @default(now())
+  seenAt      DateTime?
+  completedAt DateTime?
+
+  visit Visit?
+}
+
+// ---------------------------------------------------------------------------
+// Visit — the unit of retention analysis. A briefed visit links to a Brief;
+// non-briefed visits are entered manually so a pilot can build a baseline.
+// "Return" within a configurable window is derived from a client's visits at a
+// shop (see lib/retention.ts).
+// ---------------------------------------------------------------------------
+model Visit {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id])
+  briefId   String?  @unique
+  brief     Brief?   @relation(fields: [briefId], references: [id])
+  briefed   Boolean // true when this visit came from a Chairside brief
+  visitedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([clientId, shopId])
+}
