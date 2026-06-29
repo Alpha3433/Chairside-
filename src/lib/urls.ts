@@ -19,8 +19,11 @@ export function getBaseUrl(): string {
     const h = headers();
     const host = h.get("x-forwarded-host") ?? h.get("host");
     if (host) {
-      const proto =
-        h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+      // Loopback hosts have no TLS listener in dev, so default them to http
+      // (otherwise QR/share links to 127.0.0.1 etc. would be unreachable).
+      const hostname = host.split(":")[0].replace(/^\[|\]$/g, "");
+      const isLocal = ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname);
+      const proto = h.get("x-forwarded-proto") ?? (isLocal ? "http" : "https");
       return `${proto}://${host}`;
     }
   } catch {

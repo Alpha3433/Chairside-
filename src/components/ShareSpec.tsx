@@ -75,15 +75,28 @@ export function ShareSpec({
       const svgBlob = new Blob([svgText], { type: "image/svg+xml" });
       const url = URL.createObjectURL(svgBlob);
       const img = new Image();
+      let finished = false;
       const done = (blob: Blob, ext: string) => {
+        if (finished) return; // run once (onload/onerror/timeout race)
+        finished = true;
+        clearTimeout(timer);
         const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
+        const href = URL.createObjectURL(blob);
+        a.href = href;
         a.download = `chairside-spec.${ext}`;
         a.click();
-        URL.revokeObjectURL(a.href);
-        URL.revokeObjectURL(url);
+        // Defer revocation: some browsers (Safari, older Firefox) read the blob
+        // asynchronously after click(), so revoking synchronously can cancel the
+        // download. Give the download a moment to start first.
+        setTimeout(() => {
+          URL.revokeObjectURL(href);
+          URL.revokeObjectURL(url);
+        }, 1000);
         setSaving(false);
       };
+      // Safety net: if the SVG neither decodes nor errors (or we unmount mid-
+      // decode), fall back to the SVG so the button never sticks on "Saving…".
+      const timer = setTimeout(() => done(svgBlob, "svg"), 5000);
       img.onload = () => {
         try {
           const scale = 2;

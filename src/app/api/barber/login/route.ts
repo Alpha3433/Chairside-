@@ -20,6 +20,9 @@ export async function POST(req: Request) {
   res.cookies.set(BARBER_COOKIE, COOKIE_VALUE_OK, {
     httpOnly: true,
     sameSite: "lax",
+    // Secure in production so the session cookie is never sent over plaintext
+    // HTTP; left off in dev so http://localhost still works.
+    secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 60 * 60 * 24 * 14, // 2 weeks
   });

@@ -51,12 +51,20 @@ function esc(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;"); // safe regardless of which quote style an attribute uses
 }
 
 /** Greedy word-wrap into at most `maxLines` lines of ~`max` characters. */
 function wrap(text: string, max: number, maxLines: number): string[] {
-  const words = text.split(/\s+/);
+  // Hard-split any token longer than `max` so an unbroken string (e.g. a URL)
+  // can't run off the card edge.
+  const words = text.split(/\s+/).flatMap((w) => {
+    if (w.length <= max) return [w];
+    const chunks: string[] = [];
+    for (let i = 0; i < w.length; i += max) chunks.push(w.slice(i, i + max));
+    return chunks;
+  });
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {

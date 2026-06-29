@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { normalizeContact, isPlausibleContact } from "@/lib/contact";
 import { parseSpec, specToCreateData, SpecValidationError } from "@/lib/specSerialize";
+import { renderIllustration } from "@/lib/render";
 import { HAIR_TYPES, DENSITIES, FACE_SHAPES, USE_CASE_TAGS } from "@/lib/spec";
 
 export const runtime = "nodejs";
@@ -32,7 +33,6 @@ export async function POST(req: Request) {
   const useCaseTag = str(body.useCaseTag);
   const baseStyleId = body.baseStyleId ? str(body.baseStyleId) : null;
   const notes = body.notes ? str(body.notes).slice(0, 2000) : null;
-  const renderUrl = body.renderUrl ? str(body.renderUrl).slice(0, 2000) : null;
 
   if (!name) return bad("Name is required.");
   if (!isPlausibleContact(contactRaw)) return bad("A valid phone or email is required.");
@@ -56,6 +56,11 @@ export async function POST(req: Request) {
     const base = await prisma.baseStyle.findUnique({ where: { id: baseStyleId } });
     if (!base) return bad("Unknown base style.", 404);
   }
+
+  // The illustrative render is SERVER-derived from the structured spec (the
+  // one-way Spec→image fence), never accepted from the request body — so the
+  // public spec page can't be made to embed an attacker-supplied image URL.
+  const renderUrl = await renderIllustration(spec);
 
   const contact = normalizeContact(contactRaw);
 
