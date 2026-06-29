@@ -64,12 +64,7 @@ export function ManualVisitForm({ shopSlug }: { shopSlug: string }) {
       </div>
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {done ? <p className="text-sm text-emerald-600">Logged ✓</p> : null}
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!ok || busy}
-        className={cn(btn.base, btn.secondary)}
-      >
+      <button type="button" onClick={submit} disabled={!ok || busy} className={cn(btn.base, btn.secondary)}>
         {busy ? "…" : "Log non-briefed visit"}
       </button>
     </div>

@@ -45,8 +45,7 @@ export default async function ClientsPage({ params }: { params: { slug: string }
         <Badge tone="neutral">{clients.length}</Badge>
       </div>
       <p className="mb-5 text-xs text-neutral-400">
-        Counts span every shop — the profile is portable and keyed to the
-        client&apos;s contact.
+        Counts span every shop — the profile is portable and keyed to the client&apos;s contact.
       </p>
 
       <div className="space-y-3">

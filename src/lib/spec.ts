@@ -3,13 +3,14 @@
  *
  * CORE INVARIANT (Principle 3 of the brief):
  *   Spec numbers are AUTHORED from structured data, never inferred from pixels.
- *   Every field below is a structured parameter. The plain-language summary and
- *   the SVG head diagram are *derived deterministically* from these fields. The
- *   optional AI render (see lib/render.ts) consumes this spec but can NEVER feed
- *   back into it — there is intentionally no image -> spec code path anywhere.
+ *   Every field below is a structured parameter. The plain-language summary, the
+ *   SVG head diagram, and the exportable spec-card image are all *derived
+ *   deterministically* from these fields. The optional AI render (lib/render.ts)
+ *   consumes this spec but can NEVER feed back into it — there is intentionally
+ *   no image -> spec code path anywhere in the codebase.
  *
  * This module is environment-agnostic (no DB, no React) so it can be imported by
- * the Prisma seed, server routes, and client components alike.
+ * the Prisma seed, server routes, client components, and the SVG image builder.
  */
 
 // ---------------------------------------------------------------------------
@@ -179,7 +180,7 @@ export interface Spec {
 //
 // Standard plastic clipper guards in millimetres. These are the conventional
 // Wahl/Andis lengths. They are part of the authored, structured data — the
-// diagram and summary read mm from here, never from an image.
+// diagram, summary, and image read mm from here, never from a picture.
 // ---------------------------------------------------------------------------
 
 export const GUARD_MM: Record<Guard, number> = {

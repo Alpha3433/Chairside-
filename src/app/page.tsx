@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/db";
 import { PrimaryLink, Card, Badge } from "@/components/ui";
+import { getBaseUrl, shopClientPath } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const shops = await prisma.shop.findMany({ orderBy: { name: "asc" } });
+  const base = getBaseUrl();
 
   return (
     <main className="mx-auto max-w-2xl px-5 py-10">
@@ -16,9 +18,9 @@ export default async function Home() {
           Say exactly what you want, before you&apos;re in the chair.
         </h1>
         <p className="mt-3 text-base leading-relaxed text-neutral-600">
-          Build a precise haircut spec your barber can read in five seconds and
-          trust — guard sizes, top length, fade, neckline. Structured, not
-          guessed, and never reverse-engineered from a picture.
+          Build a precise haircut spec your barber can read in five seconds and trust — guard
+          sizes, top length, fade, neckline. Structured, not guessed, and never reverse-engineered
+          from a picture.
         </p>
       </header>
 
@@ -27,21 +29,34 @@ export default async function Home() {
           Try a shop (client side — no install, no account)
         </h2>
         <p className="mt-1 text-sm text-neutral-500">
-          In a real shop you&apos;d arrive here via a link or QR code.
+          In a real shop you&apos;d arrive here via the link or by scanning the QR.
         </p>
-        <ul className="mt-4 space-y-2">
-          {shops.map((s) => (
-            <li
-              key={s.id}
-              className="flex items-center justify-between rounded-xl border border-neutral-200 px-4 py-3"
-            >
-              <div>
-                <p className="font-semibold text-ink">{s.name}</p>
-                <p className="text-xs text-neutral-400">/s/{s.slug}</p>
-              </div>
-              <PrimaryLink href={`/s/${s.slug}`}>Build a cut →</PrimaryLink>
-            </li>
-          ))}
+        <ul className="mt-4 space-y-3">
+          {shops.map((s) => {
+            const url = `${base}${shopClientPath(s.slug)}`;
+            return (
+              <li
+                key={s.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/qr?text=${encodeURIComponent(url)}&size=120`}
+                    alt={`QR code for ${s.name}`}
+                    width={56}
+                    height={56}
+                    className="h-14 w-14 rounded border border-neutral-200 bg-white p-0.5"
+                  />
+                  <div>
+                    <p className="font-semibold text-ink">{s.name}</p>
+                    <p className="text-xs text-neutral-400">/s/{s.slug}</p>
+                  </div>
+                </div>
+                <PrimaryLink href={`/s/${s.slug}`}>Build a cut →</PrimaryLink>
+              </li>
+            );
+          })}
         </ul>
         {shops.length === 0 ? (
           <p className="mt-3 text-sm text-rose-600">
@@ -58,8 +73,8 @@ export default async function Home() {
           <Badge tone="blue">Web login</Badge>
         </div>
         <p className="mt-1 text-sm text-neutral-500">
-          Queue of incoming briefs, counter-propose, mark complete, and a
-          retention dashboard comparing briefed vs. non-briefed return rates.
+          Queue of incoming briefs, counter-propose, mark complete, and a retention dashboard
+          comparing briefed vs. non-briefed return rates.
         </p>
         <div className="mt-4">
           <a
@@ -76,17 +91,16 @@ export default async function Home() {
           Portability demo
         </h2>
         <p className="mt-1 text-sm leading-relaxed text-neutral-600">
-          A client profile is keyed to the person (phone/email), not the shop.
-          Open <strong>Sharp &amp; Co</strong> and enter the contact{" "}
-          <code className="rounded bg-neutral-100 px-1">jordan@example.com</code>{" "}
-          — even though Jordan&apos;s history was built at Fade Lab, it travels
-          with them and loads here.
+          A client profile is keyed to the person (phone/email), not the shop. Open{" "}
+          <strong>Sharp &amp; Co</strong> and enter the contact{" "}
+          <code className="rounded bg-neutral-100 px-1">jordan@example.com</code> — even though
+          Jordan&apos;s history was built at Fade Lab, it travels with them and loads here.
         </p>
       </Card>
 
       <p className="mt-8 text-center text-xs text-neutral-400">
-        MVP. Seeded specs are developer placeholders — a real barber must
-        validate them before any pilot.
+        MVP. Seeded specs are developer placeholders — a real barber must validate them before any
+        pilot.
       </p>
     </main>
   );

@@ -33,7 +33,7 @@ client churn.* It's built so a pilot with real shops can produce that number.
 
 ```bash
 cp .env.example .env   # dev defaults: SQLite, render off, barber code "letmein"
-npm install            # installs deps (Prisma downloads its query engine on postinstall)
+npm install            # installs deps (Prisma fetches its query engine on postinstall)
 npm run setup          # prisma generate + create the SQLite DB + seed library & demo data
 npm run dev            # http://localhost:3000
 ```
@@ -45,14 +45,28 @@ Then:
 - **Portability demo:** in **Sharp & Co** (`/s/sharp-co`), enter contact
   `jordan@example.com`. Jordan's history was built at **Fade Lab**, but it's keyed to the
   person, so it loads here — across shops, live.
+- **Shareable spec:** finish a client flow and you get a link + QR + "Save image" for the
+  spec at `/b/<id>` (image at `/b/<id>/image.svg`).
 
-> **Restricted-network note.** If `npm install` fails to download Prisma's engine binaries
-> (some egress proxies reset large downloads), install JS only and fetch the engines
-> directly: `npm install --ignore-scripts`, then download
-> `libquery_engine-<target>.so.node` and `schema-engine-<target>` for engine commit
-> `605197351a3c8bdd595af2d2a9bc3025bca48ea2` from `binaries.prisma.sh` into
-> `node_modules/@prisma/engines/` and run `npm run setup`. On a normal network you won't
-> need this.
+> **Restricted-network note.** Prisma downloads its engine binaries from
+> `binaries.prisma.sh` on postinstall, and some egress proxies reset large downloads
+> (`ECONNRESET`/`aborted`). JS packages still install fine. If `npm install` fails on the
+> Prisma engine, install JS only and fetch the engines with a resumable download:
+>
+> ```bash
+> npm install --ignore-scripts
+> HASH=$(node -p "require('@prisma/engines-version').enginesVersion")
+> TARGET=debian-openssl-3.0.x   # match your platform (see `npx prisma -v`)
+> BASE="https://binaries.prisma.sh/all_commits/$HASH/$TARGET"
+> ENG=node_modules/@prisma/engines
+> curl -L --retry 20 --retry-all-errors -C - -o /tmp/qe.gz  "$BASE/libquery_engine.so.node.gz"
+> curl -L --retry 20 --retry-all-errors -C - -o /tmp/se.gz  "$BASE/schema-engine.gz"
+> gzip -dc /tmp/qe.gz > "$ENG/libquery_engine-$TARGET.so.node"
+> gzip -dc /tmp/se.gz > "$ENG/schema-engine-$TARGET" && chmod +x "$ENG/schema-engine-$TARGET"
+> npm run setup
+> ```
+>
+> `-C -` resumes the partial file across resets. On a normal network you won't need this.
 
 ### Config (`.env`)
 
@@ -61,6 +75,7 @@ Copy `.env.example` to `.env`. The defaults work out of the box for local dev.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | `file:./dev.db` | SQLite for dev; swap to a Postgres URL to deploy. |
+| `APP_URL` | _(empty)_ | Public base URL for QR/share links. Empty = derive from the request host. |
 | `RETENTION_WINDOW_DAYS` | `42` | A return counts if it lands within this many days (6 weeks). |
 | `RENDER_ENABLED` | `false` | Turn the optional illustrative render on. Off → labelled placeholder. |
 | `RENDER_API_KEY` | — | Image API key, only read when `RENDER_ENABLED=true`. |
@@ -82,8 +97,16 @@ A scannable card (`src/components/SpecSheet.tsx`) containing:
   params (no AI)
 - **A plain-language summary line** derived from the structured fields
 
-Everything on the sheet is a function of the structured `Spec`
-(`src/lib/spec.ts`) — guards, lengths, summary text, and the diagram all derive from it.
+Everything on the sheet is a function of the structured `Spec` (`src/lib/spec.ts`).
+
+### Shareable — as a link AND as an image
+
+- **Link:** every brief has a public, read-only page at `/b/<id>` (works with any booking
+  system, or none — platform-agnostic by design).
+- **Image:** `/b/<id>/image.svg` is a self-contained SVG spec card built by
+  `src/lib/specCard.ts`, **deterministically from the structured spec**. The client flow
+  and the public page offer copy-link, native share, a QR, and "Save image" (PNG, falling
+  back to SVG). Generating the image is itself a one-way `Spec → image` step — see below.
 
 ### The image fence (Principle 3)
 
@@ -92,8 +115,9 @@ flows **one way only**: `Spec → image`. There is intentionally no function any
 turns an image into a spec field, and the `/api/render` response contains a URL and nothing
 else. The only way a `Spec` is ever constructed from a request is `parseSpec`
 (`src/lib/specSerialize.ts`), which validates every field against the controlled
-vocabulary. This makes "a guard size read off a picture" structurally impossible, not just
-discouraged.
+vocabulary. The exportable spec-card image (`src/lib/specCard.ts`) is likewise generated
+*from* the structured spec. This makes "a guard size read off a picture" structurally
+impossible, not just discouraged.
 
 ---
 
@@ -138,8 +162,8 @@ discouraged.
 ## Tech & scope
 
 Next.js 14 (App Router) · TypeScript · React · Tailwind · Prisma (SQLite dev → Postgres
-deploy). Deployable to Vercel; swap the datasource `provider` to `postgresql` and point
-`DATABASE_URL` at Postgres.
+deploy) · `qrcode` for QR SVGs. Deployable to Vercel; swap the datasource `provider` to
+`postgresql`, point `DATABASE_URL` at Postgres, and set `APP_URL`.
 
 **Non-goals (held):** no payments, no booking/calendar engine, no native apps, no real-time
 3D hair rendering, no Fresha/Square/Booksy integration (platform-agnostic by link/QR; a
@@ -150,9 +174,11 @@ clean seam is left), no production-grade multi-tenant auth.
 ```
 prisma/            schema + seed (the curated library + demo data)
 src/lib/           spec vocab & types, parse/serialize, summary, diagram math,
-                   retention, portable history, render fence, auth, contact key
-src/components/    SpecSheet, HeadDiagram, SpecControls, client/ and barber/ UIs
-src/app/           landing, /s/[slug] client flow, /barber dashboard, /api routes
+                   retention, portable history, render fence, auth, contact key,
+                   specCard (exportable SVG), qr, urls
+src/components/    SpecSheet, HeadDiagram, SpecControls, ShareSpec, client/ and barber/ UIs
+src/app/           landing, /s/[slug] client flow, /b/[id] shareable spec, /barber
+                   dashboard, /api routes
 ```
 
 ### Useful scripts
@@ -161,6 +187,7 @@ src/app/           landing, /s/[slug] client flow, /barber dashboard, /api route
 | --- | --- |
 | `npm run dev` | Dev server |
 | `npm run build` | `prisma generate` + production build |
+| `npm run typecheck` | `tsc --noEmit` |
 | `npm run setup` | generate + db push + seed |
 | `npm run db:seed` | Re-seed |
 | `npm run db:reset` | Drop, recreate, and re-seed the dev DB |

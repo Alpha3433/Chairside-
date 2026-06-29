@@ -33,8 +33,8 @@ export default async function RetentionPage({ params }: { params: { slug: string
         <Badge tone="neutral">{windowDays}-day window</Badge>
       </div>
       <p className="mb-5 text-xs text-neutral-400">
-        Do clients who arrived with a Chairside brief come back more than those
-        who didn&apos;t? This is the number the pilot exists to produce.
+        Do clients who arrived with a Chairside brief come back more than those who didn&apos;t?
+        This is the number the pilot exists to produce.
       </p>
 
       {/* The comparison */}
@@ -70,21 +70,16 @@ export default async function RetentionPage({ params }: { params: { slug: string
           </span>
         </div>
         <div className="mt-3">
-          <CompareBar
-            briefed={result.briefed.repeatRate}
-            nonBriefed={result.nonBriefed.repeatRate}
-          />
+          <CompareBar briefed={result.briefed.repeatRate} nonBriefed={result.nonBriefed.repeatRate} />
         </div>
         <p className="mt-3 text-xs text-neutral-500">
           Briefed clients return at {formatPct(result.briefed.repeatRate)} vs{" "}
-          {formatPct(result.nonBriefed.repeatRate)} for non-briefed, over a{" "}
-          {windowDays}-day window.
+          {formatPct(result.nonBriefed.repeatRate)} for non-briefed, over a {windowDays}-day window.
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-neutral-400">
-          Honest caveat: a client&apos;s first visit needs a full window to have
-          had the chance to produce a return, so very recent visits and small
-          cohorts make early numbers noisy. {result.totalClients} clients /{" "}
-          {result.totalVisits} visits counted so far.
+          Honest caveat: a client&apos;s first visit needs a full window to have had the chance to
+          produce a return, so very recent visits and small cohorts make early numbers noisy.{" "}
+          {result.totalClients} clients / {result.totalVisits} visits counted so far.
         </p>
       </Card>
 
@@ -92,8 +87,8 @@ export default async function RetentionPage({ params }: { params: { slug: string
       <div className="mt-8">
         <h3 className="text-sm font-bold text-ink">Log a non-briefed visit</h3>
         <p className="mb-3 text-xs text-neutral-400">
-          Record walk-ins who didn&apos;t use Chairside, so the comparison above
-          has a baseline. A repeat contact is recognised automatically.
+          Record walk-ins who didn&apos;t use Chairside, so the comparison above has a baseline. A
+          repeat contact is recognised automatically.
         </p>
         <Card className="p-4">
           <ManualVisitForm shopSlug={shop.slug} />
@@ -119,9 +114,7 @@ export default async function RetentionPage({ params }: { params: { slug: string
               </div>
             </div>
           ))}
-          {visits.length === 0 ? (
-            <p className="text-sm text-neutral-500">No visits recorded yet.</p>
-          ) : null}
+          {visits.length === 0 ? <p className="text-sm text-neutral-500">No visits recorded yet.</p> : null}
         </div>
       </div>
     </BarberShell>

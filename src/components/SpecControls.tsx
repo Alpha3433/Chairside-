@@ -85,9 +85,7 @@ export function SpecControls({
           <Segmented
             options={TOP_METHOD_OPTS}
             value={value.topMethod}
-            onChange={(v) =>
-              set({ topMethod: v, topGuard: v === "scissor" ? null : value.topGuard })
-            }
+            onChange={(v) => set({ topMethod: v, topGuard: v === "scissor" ? null : value.topGuard })}
           />
         </Labeled>
         <Labeled label="Top length" hint="The number the barber works to.">
@@ -139,10 +137,7 @@ export function SpecControls({
             value={value.beard?.style ?? "none"}
             onChange={(v) =>
               set({
-                beard:
-                  v === "none"
-                    ? null
-                    : { style: v, lengthMm: value.beard?.lengthMm ?? 6 },
+                beard: v === "none" ? null : { style: v, lengthMm: value.beard?.lengthMm ?? 6 },
               })
             }
           />
@@ -153,9 +148,7 @@ export function SpecControls({
               value={value.beard?.lengthMm ?? 6}
               min={0}
               max={60}
-              onChange={(v) =>
-                set({ beard: { style: value.beard!.style, lengthMm: v } })
-              }
+              onChange={(v) => set({ beard: { style: value.beard!.style, lengthMm: v } })}
             />
           </Labeled>
         ) : null}

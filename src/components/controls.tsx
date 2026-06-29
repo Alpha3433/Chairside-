@@ -28,7 +28,7 @@ export interface Option<T extends string> {
   label: string;
 }
 
-/** Horizontally-scrollable segmented control — touch friendly. */
+/** Wrapping segmented control — touch friendly. */
 export function Segmented<T extends string>({
   options,
   value,
@@ -41,11 +41,7 @@ export function Segmented<T extends string>({
   ariaLabel?: string;
 }) {
   return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      className="flex flex-wrap gap-1.5"
-    >
+    <div role="radiogroup" aria-label={ariaLabel} className="flex flex-wrap gap-1.5">
       {options.map((o) => {
         const active = o.value === value;
         return (

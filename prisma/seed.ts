@@ -4,8 +4,8 @@
  * ┌───────────────────────────────────────────────────────────────────────────┐
  * │ ⚠️  PLACEHOLDER SPECS — NOT GROUND TRUTH.                                   │
  * │                                                                            │
- * │ Every `default*Spec` below is scaffolding authored by a developer, not a   │
- * │ barber. Guard numbers, fade heights and top lengths are plausible but      │
+ * │ Every `spec` in LIBRARY below is scaffolding authored by a developer, not  │
+ * │ a barber. Guard numbers, fade heights and top lengths are plausible but    │
  * │ UNVALIDATED. Before ANY pilot, a real barber must review and correct each  │
  * │ one — the whole product depends on these numbers being credible (the first │
  * │ wrong number a barber spots permanently destroys trust). `barberValidated` │
@@ -298,12 +298,8 @@ async function main() {
 
   // --- Shops & barbers ---
   console.log("Seeding shops & barbers…");
-  const fadeLab = await prisma.shop.create({
-    data: { name: "Fade Lab", slug: "fade-lab" },
-  });
-  const sharpCo = await prisma.shop.create({
-    data: { name: "Sharp & Co", slug: "sharp-co" },
-  });
+  const fadeLab = await prisma.shop.create({ data: { name: "Fade Lab", slug: "fade-lab" } });
+  const sharpCo = await prisma.shop.create({ data: { name: "Sharp & Co", slug: "sharp-co" } });
   await prisma.barber.createMany({
     data: [
       { name: "Marco", email: "marco@fadelab.example", shopId: fadeLab.id },
@@ -313,9 +309,7 @@ async function main() {
 
   // --- Helpers ---
   async function makeSpec(spec: Spec, baseStyleId: string | null) {
-    return prisma.styleSpec.create({
-      data: specToCreateData(spec, { baseStyleId }),
-    });
+    return prisma.styleSpec.create({ data: specToCreateData(spec, { baseStyleId }) });
   }
 
   async function completedBrief(opts: {
@@ -381,12 +375,7 @@ async function main() {
     });
   }
 
-  async function manualVisit(opts: {
-    clientId: string;
-    shopId: string;
-    daysAgo: number;
-    briefed: boolean;
-  }) {
+  async function manualVisit(opts: { clientId: string; shopId: string; daysAgo: number; briefed: boolean }) {
     return prisma.visit.create({
       data: {
         clientId: opts.clientId,
@@ -414,7 +403,15 @@ async function main() {
   await completedBrief({ clientId: jordan.id, shopId: fadeLab.id, baseName: "Mid Fade Pompadour", useCase: "big_change", daysAgo: 56 });
   await completedBrief({ clientId: jordan.id, shopId: fadeLab.id, baseName: "Mid Fade Pompadour", useCase: "walk_in_to_regular", daysAgo: 28 });
   // …then Jordan walks into a DIFFERENT shop and is recognised with full history.
-  await openBrief({ clientId: jordan.id, shopId: sharpCo.id, baseName: "High Skin Fade + Quiff", useCase: "new_barber", status: "submitted", daysAgo: 1, notes: "First time at this shop — went a bit shorter last time, happy to go bolder." });
+  await openBrief({
+    clientId: jordan.id,
+    shopId: sharpCo.id,
+    baseName: "High Skin Fade + Quiff",
+    useCase: "new_barber",
+    status: "submitted",
+    daysAgo: 1,
+    notes: "First time at this shop — went a bit shorter last time, happy to go bolder.",
+  });
 
   // Briefed cohort at Fade Lab (mostly return → high repeat rate).
   const briefedReturners = [
@@ -450,7 +447,7 @@ async function main() {
   }
 
   // Non-briefed baseline at Fade Lab (manual entry) — lower repeat rate.
-  // Five came once; three of eight returned → ~38% vs briefed ~80%.
+  // Three of eight returned → ~38% vs briefed ~80%.
   const nonBriefed = [
     { name: "Walk-in 1", contact: "nb-0400000101", returns: true },
     { name: "Walk-in 2", contact: "nb-0400000102", returns: true },
@@ -466,9 +463,7 @@ async function main() {
       data: { name: c.name, contact: c.contact, hairType: "straight", density: "medium", createdAt: daysAgo(80) },
     });
     await manualVisit({ clientId: client.id, shopId: fadeLab.id, daysAgo: 60, briefed: false });
-    if (c.returns) {
-      await manualVisit({ clientId: client.id, shopId: fadeLab.id, daysAgo: 32, briefed: false });
-    }
+    if (c.returns) await manualVisit({ clientId: client.id, shopId: fadeLab.id, daysAgo: 32, briefed: false });
   }
 
   // A small baseline at Sharp & Co too.
@@ -489,8 +484,8 @@ async function main() {
   };
   console.log("Seed complete:", counts);
   console.log("\nClient links:");
-  console.log(`  Fade Lab:   /s/fade-lab`);
-  console.log(`  Sharp & Co: /s/sharp-co`);
+  console.log("  Fade Lab:   /s/fade-lab");
+  console.log("  Sharp & Co: /s/sharp-co");
   console.log("Barber dashboard: /barber  (access code: BARBER_ACCESS_CODE, default 'letmein')");
   console.log("Portability demo: enter contact 'jordan@example.com' at Sharp & Co — history loads.");
 }

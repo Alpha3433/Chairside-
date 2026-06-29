@@ -2,6 +2,9 @@
  * SpecSheet — THE core artifact. A scannable card a barber reads in five
  * seconds and trusts. Every number on it is a structured parameter (see
  * lib/spec.ts); the optional illustration is fenced off and clearly labelled.
+ *
+ * Server-safe (no hooks) so it renders in the client flow, the barber
+ * dashboard, AND the public shareable spec page alike.
  */
 
 import type { Spec, HairType, Density } from "@/lib/spec";
@@ -11,7 +14,7 @@ import { HeadDiagram } from "./HeadDiagram";
 
 export interface SpecSheetProps {
   spec: Spec;
-  /** Plain-language summary; derived if omitted is not allowed — pass it in. */
+  /** Plain-language summary; pass it in (derived via generateSummary). */
   summary: string;
   title?: string;
   subtitle?: string;
@@ -43,9 +46,7 @@ export function SpecSheet({
           <h3 className="text-base font-semibold leading-tight text-ink">
             {title ?? "Cut spec"}
           </h3>
-          {subtitle ? (
-            <p className="text-xs text-neutral-500">{subtitle}</p>
-          ) : null}
+          {subtitle ? <p className="text-xs text-neutral-500">{subtitle}</p> : null}
         </div>
         <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">
           Authored spec
@@ -105,9 +106,7 @@ export function SpecSheet({
       </div>
 
       {/* Optional illustration — strictly fenced + labelled */}
-      {renderUrl || showIllustrationSlot ? (
-        <Illustration renderUrl={renderUrl} />
-      ) : null}
+      {renderUrl || showIllustrationSlot ? <Illustration renderUrl={renderUrl} /> : null}
     </div>
   );
 }
@@ -156,8 +155,8 @@ function Illustration({ renderUrl }: { renderUrl?: string | null }) {
         </span>
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">
-        Any image here is illustrative only. The spec above is the source of
-        truth — its numbers come from structured settings, never from a picture.
+        Any image here is illustrative only. The spec above is the source of truth — its numbers
+        come from structured settings, never from a picture.
       </p>
     </div>
   );

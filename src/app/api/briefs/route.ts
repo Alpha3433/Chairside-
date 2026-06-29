@@ -62,19 +62,8 @@ export async function POST(req: Request) {
   // Upsert the portable client. Update mutable context on return visits.
   const client = await prisma.client.upsert({
     where: { contact },
-    create: {
-      name,
-      contact,
-      hairType,
-      density,
-      faceShape: faceShapeRaw || null,
-    },
-    update: {
-      name,
-      hairType,
-      density,
-      faceShape: faceShapeRaw || null,
-    },
+    create: { name, contact, hairType, density, faceShape: faceShapeRaw || null },
+    update: { name, hairType, density, faceShape: faceShapeRaw || null },
   });
 
   const requestedSpec = await prisma.styleSpec.create({

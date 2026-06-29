@@ -40,8 +40,7 @@ export function BarberLogin() {
       </p>
       <h1 className="mt-2 text-2xl font-bold text-ink">Dashboard sign-in</h1>
       <p className="mt-1 text-sm text-neutral-500">
-        Enter your shop access code. (MVP-level shared code — not production
-        auth.)
+        Enter your shop access code. (MVP-level shared code — not production auth.)
       </p>
       <div className="mt-6 space-y-4">
         <Labeled label="Access code">
