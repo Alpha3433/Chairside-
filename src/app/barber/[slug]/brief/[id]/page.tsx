@@ -27,7 +27,7 @@ export default async function BriefDetail({
 
   const brief = await prisma.brief.findUnique({
     where: { id: params.id },
-    include: { client: true, requestedSpec: true, barberSpec: true, actualSpec: true },
+    include: { client: true, requestedSpec: true, barberSpec: true, actualSpec: true, bookingToken: true },
   });
   if (!brief || brief.shopId !== shop.id) notFound();
 
@@ -79,6 +79,15 @@ export default async function BriefDetail({
             {" · submitted "}
             {timeAgo(brief.createdAt)}
           </p>
+          {brief.bookingToken ? (
+            <p className="mt-1 text-xs text-sky-700">
+              Booked via {bookingSourceLabel(brief.bookingToken.platform)}
+              {brief.bookingToken.appointmentAt
+                ? ` · ${formatDate(brief.bookingToken.appointmentAt)}`
+                : ""}
+              {syncLabel(brief.syncStatus)}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <Badge tone="purple">{LABELS.useCaseTag[brief.useCaseTag as keyof typeof LABELS.useCaseTag] ?? brief.useCaseTag}</Badge>
@@ -182,4 +191,30 @@ export default async function BriefDetail({
       </div>
     </BarberShell>
   );
+}
+
+function bookingSourceLabel(platform: string): string {
+  switch (platform) {
+    case "square":
+      return "Square";
+    case "zapier":
+      return "Gettimely / Zapier";
+    case "walk_in":
+      return "walk-in";
+    default:
+      return "desk QR";
+  }
+}
+
+function syncLabel(status: string | null): string {
+  switch (status) {
+    case "attached":
+      return " · brief pushed to Square ✓";
+    case "stub":
+      return " · attach stubbed (connect Square to push)";
+    case "failed":
+      return " · attach failed";
+    default:
+      return "";
+  }
 }

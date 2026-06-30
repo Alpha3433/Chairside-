@@ -5,6 +5,7 @@ const TABS = [
   { key: "queue", label: "Queue", path: "" },
   { key: "clients", label: "Clients", path: "/clients" },
   { key: "retention", label: "Retention", path: "/retention" },
+  { key: "integrations", label: "Integrations", path: "/integrations" },
 ] as const;
 
 export function BarberShell({
@@ -15,7 +16,7 @@ export function BarberShell({
 }: {
   shopName: string;
   shopSlug: string;
-  active: "queue" | "clients" | "retention";
+  active: "queue" | "clients" | "retention" | "integrations";
   children: React.ReactNode;
 }) {
   return (

@@ -85,6 +85,11 @@ Copy `.env.example` to `.env`. The defaults work out of the box for local dev.
 | `RENDER_PROVIDER_URL` | — | Endpoint for the pluggable image-to-image / hair-inpainting provider used by the try-on. |
 | `VISUALIZATION_ENABLED` | `true` | Offer the selfie + multi-angle try-on step in the client flow. |
 | `STORAGE_DIR` | `.uploads` | Where captured photos + renders are stored in dev (filesystem stub, never public). |
+| `INTEGRATIONS_ENABLED` | `true` | Master switch for booking integration + QR onboarding. |
+| `BOOKING_TOKEN_TTL_DAYS` | `14` | Personalized-link token lifetime. |
+| `SQUARE_ENABLED` / `SQUARE_*` | `false` / — | Tier 1 Square OAuth + webhook (stub mode when off). |
+| `ZAPIER_WEBHOOK_SECRET` | — | Tier 2 shared secret for the inbound Zapier webhook (`X-Chairside-Secret`). |
+| `MESSAGING_ENABLED` / `MESSAGING_*` | `false` / — | Functional-only customer messaging (stub when off). |
 | `BARBER_ACCESS_CODE` | `letmein` | Shared code gating the barber dashboard (MVP-level). |
 
 ---
@@ -165,6 +170,37 @@ allow the camera, take the three angles, pick a style, and tap **Preview on my p
 
 ---
 
+## Booking integration + frictionless QR onboarding
+
+When a client books at a participating shop, they get a **personalized link** that already knows who
+they are — straight to scan + style, **zero contact entry**. Coverage is **tiered and honest** (a
+common `BookingAdapter` interface; every tier funnels into ONE pipeline, `src/lib/onboard.ts`):
+
+| Tier | Platform | How | Attach back? |
+| --- | --- | --- | --- |
+| 1 · deep | **Square Appointments** | OAuth + `booking.*` webhook → match/create profile → link; **attach** the brief to the appointment + customer via Custom Attributes | ✅ |
+| 2 · trigger | **Gettimely & others via Zapier** | shop's Zap → our signed inbound webhook → same pipeline → deliver the link to the customer | ✗ (no API) |
+| 3 · universal | **Fresha / closed / walk-ins** | static **desk QR** → "find your booking / I'm a walk-in" | n/a |
+
+**The token is the vehicle (no PII in URLs, ever).** A static printed QR can't carry identity, so
+identity-bearing onboarding uses a **per-booking token**: opaque, random (256-bit), short-TTL, mapped
+**server-side** to `{shop, client, booking}` (`BookingToken`). The link is just `/go/<token>`. Opening
+it reveals only a **first name + appointment time**; a **light confirmation** (last 3 digits of phone,
+or an appointment tap) gates everything else — and the contact **never reaches the browser** (the flow
+submits with the token; the server resolves identity). Renders the same token as a QR or a tap button.
+
+**Honesty (held):** Square is deep; the others are trigger/fallback — we don't fabricate APIs for
+closed platforms, don't inject into platforms' own emails, and don't encode identity into a shared
+static QR. A few Square steps genuinely can't be automated (making a team member "bookable", verifying
+exact custom-attribute scopes) — surfaced in the **Integrations** tab.
+
+**Safe to demo without credentials:** `SQUARE_ENABLED=false` runs the whole pipeline in **stub mode**
+— the webhook still matches/creates the profile and mints a link; attach/SMS become logged no-ops.
+Set a `ZAPIER_WEBHOOK_SECRET` and POST to `/api/webhooks/zapier` to see Tier 2 end-to-end; open
+`/find/<slug>` for the Tier 3 desk-QR flow; connect Square from `/barber/<slug>/integrations` for Tier 1.
+
+---
+
 ## How the build answers the three known risks
 
 - **Risk 1 — barbers may not want this.** Briefs are tagged with a *use case*
@@ -199,6 +235,10 @@ allow the camera, take the three angles, pick a style, and tap **Preview on my p
   `Client`, linked to a `Brief` on submit; `storageKey` is opaque (never a public path).
 - **Render** — an illustration of a chosen spec on a `Photo`, unique on `(photoId, specHash)`
   so it's billed at most once; the look only, never the numbers.
+- **ShopIntegration** *(booking)* — a shop's connection to a platform (Square OAuth tokens /
+  Zapier secret), one per `(shop, platform)`.
+- **BookingToken** — the personalized-link vehicle: opaque + random + short-TTL, mapped
+  server-side to `{shop, client, booking}`; the only thing in a `/go/<token>` URL.
 
 > ⚠️ **The seeded specs are developer placeholders.** Guard numbers, fade heights and top
 > lengths in `prisma/seed.ts` are plausible scaffolding, **not** barber-validated ground
@@ -215,9 +255,10 @@ deploy) · `qrcode` for QR SVGs · browser `getUserMedia` + canvas capture and t
 Deployable to Vercel; swap the datasource `provider` to `postgresql`, point `DATABASE_URL` at
 Postgres, set `APP_URL`, and move `STORAGE_DIR` to object storage (see `src/lib/storage.ts`).
 
-**Non-goals (held):** no payments, no booking/calendar engine, no native apps, no real-time
-3D hair rendering, no Fresha/Square/Booksy integration (platform-agnostic by link/QR; a
-clean seam is left), no production-grade multi-tenant auth.
+**Non-goals (held):** no payments, no booking/calendar engine (booking integration is
+**read + attach only** — we never create bookings; tiered Square / Zapier / QR-fallback,
+platform-agnostic), no native apps, no real-time 3D hair rendering, no production-grade
+multi-tenant auth.
 
 ### Project layout
 
@@ -226,11 +267,15 @@ prisma/            schema (incl. Photo + Render) + seed (curated library + demo 
 src/lib/           spec vocab & types, parse/serialize, summary, diagram math,
                    retention, portable history, render fence, auth, contact key,
                    specCard (exportable SVG), qr, urls, rateLimit,
-                   storage (stub), specHash (render cache key), angles, photoRender
+                   storage (stub), specHash (render cache key), angles, photoRender,
+                   tokens, onboard (shared pipeline), messaging, booking/ (adapters)
 src/components/    SpecSheet, HeadDiagram, SpecControls, ShareSpec,
-                   client/ (flow, CaptureFlow, TryOn) and barber/ (incl. BriefMedia) UIs
-src/app/           landing, /s/[slug] client flow, /b/[id] shareable spec, /barber
-                   dashboard, /api routes (briefs, clients, photos, renders, qr, …)
+                   client/ (flow, CaptureFlow, TryOn, GoOnboarding, FindBooking) and
+                   barber/ (incl. BriefMedia) UIs
+src/app/           landing, /s/[slug] flow, /b/[id] shareable spec, /go/[token] (booked),
+                   /find/[slug] (desk QR), /barber dashboard (+ integrations), /api routes
+                   (briefs, clients, photos, renders, qr, tokens, fallback, webhooks,
+                   integrations)
 ```
 
 ### Useful scripts

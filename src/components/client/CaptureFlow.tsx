@@ -35,12 +35,16 @@ type Guidance = { brightnessOk: boolean; facePresent: boolean; detector: boolean
 
 export function CaptureFlow({
   contact,
+  bookingToken,
   initial,
   onComplete,
   onSkip,
   onBack,
 }: {
-  contact: string;
+  // Either a contact (normal flow) OR a bookingToken (personalized-link flow,
+  // where the contact never reaches the browser). Exactly one is provided.
+  contact?: string;
+  bookingToken?: string;
   initial?: CapturedPhoto[];
   onComplete: (photos: CapturedPhoto[]) => void;
   onSkip: () => void;
@@ -181,7 +185,8 @@ export function CaptureFlow({
 
       const form = new FormData();
       form.append("photo", blob, `${angle}.jpg`);
-      form.append("contact", contact);
+      if (bookingToken) form.append("bookingToken", bookingToken);
+      else if (contact) form.append("contact", contact);
       form.append("angle", angle);
       form.append("consent", "true");
       form.append("width", String(cw));

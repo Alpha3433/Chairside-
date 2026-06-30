@@ -5,6 +5,8 @@ import { normalizeContact, isPlausibleContact } from "@/lib/contact";
 import { isAngle } from "@/lib/angles";
 import { putObject, deleteObject } from "@/lib/storage";
 import { rateLimit, clientIp } from "@/lib/rateLimit";
+import { loadToken } from "@/lib/onboard";
+import { isUsable } from "@/lib/tokens";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +36,7 @@ export async function POST(req: Request) {
     return bad("Expected multipart form data.");
   }
 
+  const bookingToken = String(form.get("bookingToken") ?? "");
   const contactRaw = String(form.get("contact") ?? "");
   const angle = String(form.get("angle") ?? "");
   const consent = String(form.get("consent") ?? "") === "true";
@@ -42,7 +45,6 @@ export async function POST(req: Request) {
   const file = form.get("photo");
 
   if (!consent) return bad("Photo consent is required before uploading.", 403);
-  if (!isPlausibleContact(contactRaw)) return bad("A valid phone or email is required.");
   if (!isAngle(angle)) return bad("Invalid angle.");
   if (!(file instanceof File)) return bad("Missing photo file.");
   if (file.size > MAX_BYTES) return bad("Photo is too large.", 413);
@@ -51,12 +53,23 @@ export async function POST(req: Request) {
   const bytes = Buffer.from(await file.arrayBuffer());
   if (bytes.length === 0) return bad("Empty photo.");
 
-  const contact = normalizeContact(contactRaw);
-  const client = await prisma.client.upsert({
-    where: { contact },
-    create: { name: "", contact, hairType: "straight", density: "medium", photoConsentAt: new Date() },
-    update: {},
-  });
+  // Resolve the owning client either from a confirmed booking token (personalized
+  // flow — no contact in the browser) or from the contact (normal flow).
+  let client;
+  if (bookingToken) {
+    const tok = await loadToken(bookingToken);
+    if (!tok || !isUsable(tok) || !tok.client) return bad("This link has expired.", 410);
+    if (tok.status === "pending") return bad("Confirm your identity first.", 403);
+    client = tok.client;
+  } else {
+    if (!isPlausibleContact(contactRaw)) return bad("A valid phone or email is required.");
+    const contact = normalizeContact(contactRaw);
+    client = await prisma.client.upsert({
+      where: { contact },
+      create: { name: "", contact, hairType: "straight", density: "medium", photoConsentAt: new Date() },
+      update: {},
+    });
+  }
   if (!client.photoConsentAt) {
     await prisma.client.update({ where: { id: client.id }, data: { photoConsentAt: new Date() } });
   }

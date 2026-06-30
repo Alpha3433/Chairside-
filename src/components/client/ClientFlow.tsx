@@ -68,35 +68,52 @@ type Step =
   | "review"
   | "done";
 
+export interface ClientFlowPrefill {
+  name: string;
+  hairType: string;
+  density: string;
+  faceShape: string;
+}
+
 export function ClientFlow({
   shopName,
   shopSlug,
   baseStyles,
   renderEnabled,
   visualizationEnabled,
+  prefill = null,
+  bookingToken = null,
 }: {
   shopName: string;
   shopSlug: string;
   baseStyles: BaseStyleOption[];
   renderEnabled: boolean;
   visualizationEnabled: boolean;
+  // When the client arrived via a personalized booking link, identity is already
+  // known (resolved server-side from the token) — skip the identity step and
+  // never ask for, or hold, their contact in the browser.
+  prefill?: ClientFlowPrefill | null;
+  bookingToken?: string | null;
 }) {
-  const stepOrder: Step[] = visualizationEnabled
-    ? ["identity", "hair", "capture", "pick", "customize", "details", "review"]
-    : ["identity", "hair", "pick", "customize", "details", "review"];
+  const identified = !!prefill;
+  const stepOrder = (
+    visualizationEnabled
+      ? (["identity", "hair", "capture", "pick", "customize", "details", "review"] as Step[])
+      : (["identity", "hair", "pick", "customize", "details", "review"] as Step[])
+  ).filter((s) => !(identified && s === "identity"));
 
-  const [step, setStep] = useState<Step>("identity");
+  const [step, setStep] = useState<Step>(identified ? "hair" : "identity");
 
   // identity
-  const [name, setName] = useState("");
+  const [name, setName] = useState(prefill?.name ?? "");
   const [contact, setContact] = useState("");
   const [recognized, setRecognized] = useState<{ name: string; history: HistoryItem[] } | null>(null);
   const [looking, setLooking] = useState(false);
 
   // hair
-  const [hairType, setHairType] = useState<HairType>("straight");
-  const [density, setDensity] = useState<Density>("medium");
-  const [faceShape, setFaceShape] = useState<FaceShape | "">("");
+  const [hairType, setHairType] = useState<HairType>((prefill?.hairType as HairType) ?? "straight");
+  const [density, setDensity] = useState<Density>((prefill?.density as Density) ?? "medium");
+  const [faceShape, setFaceShape] = useState<FaceShape | "">((prefill?.faceShape as FaceShape) || "");
 
   // photos (visualization layer)
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
@@ -192,6 +209,7 @@ export function ClientFlow({
           useCaseTag,
           notes: notes || undefined,
           photoIds: photos.map((p) => p.id),
+          bookingToken: bookingToken ?? undefined,
         }),
       });
       const data = await res.json();
@@ -238,14 +256,15 @@ export function ClientFlow({
           onHairType={setHairType}
           onDensity={setDensity}
           onFaceShape={setFaceShape}
-          onBack={() => setStep("identity")}
+          onBack={identified ? undefined : () => setStep("identity")}
           onContinue={() => setStep(afterHair)}
         />
       )}
 
       {step === "capture" && (
         <CaptureFlow
-          contact={contact}
+          contact={identified ? undefined : contact}
+          bookingToken={bookingToken ?? undefined}
           initial={photos}
           onComplete={(p) => {
             setPhotos(p);
@@ -464,7 +483,7 @@ function Hair({
   onHairType: (v: HairType) => void;
   onDensity: (v: Density) => void;
   onFaceShape: (v: FaceShape | "") => void;
-  onBack: () => void;
+  onBack?: () => void;
   onContinue: () => void;
 }) {
   return (
