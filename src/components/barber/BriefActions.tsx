@@ -107,8 +107,7 @@ export function BriefActions({
   if (status === "completed") {
     return (
       <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800 ring-1 ring-emerald-200">
-        This brief is complete. The actual cut is recorded in the client&apos;s
-        history below.
+        This brief is complete. The actual cut is recorded in the client&apos;s history below.
       </div>
     );
   }
@@ -158,7 +157,11 @@ export function BriefActions({
           {mode === "counter" ? (
             <div className="mt-4">
               <Labeled label="Note to client (optional)">
-                <TextArea value={note} onChange={setNote} placeholder="e.g. Your hair won't hold a true skin fade without irritation — went a touch longer, looks the same up top." />
+                <TextArea
+                  value={note}
+                  onChange={setNote}
+                  placeholder="e.g. Your hair won't hold a true skin fade without irritation — went a touch longer, looks the same up top."
+                />
               </Labeled>
             </div>
           ) : null}

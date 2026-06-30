@@ -2,9 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import { isBarberAuthed } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { BarberShell } from "@/components/barber/BarberShell";
+import { ShopQrCard } from "@/components/barber/ShopQrCard";
 import { Card, Badge } from "@/components/ui";
 import { LABELS } from "@/lib/spec";
 import { timeAgo, maskContact } from "@/lib/format";
+import { getBaseUrl, shopClientPath } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +43,12 @@ export default async function QueuePage({ params }: { params: { slug: string } }
   });
 
   const waiting = briefs.filter((b) => b.status === "submitted" || b.status === "seen").length;
+  const clientUrl = `${getBaseUrl()}${shopClientPath(shop.slug)}`;
 
   return (
     <BarberShell shopName={shop.name} shopSlug={shop.slug} active="queue">
+      <ShopQrCard url={clientUrl} slug={shop.slug} />
+
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-lg font-bold text-ink">Incoming briefs</h2>
         <Badge tone={waiting > 0 ? "amber" : "neutral"}>{waiting} waiting</Badge>
@@ -51,7 +56,7 @@ export default async function QueuePage({ params }: { params: { slug: string } }
 
       {briefs.length === 0 ? (
         <p className="text-sm text-neutral-500">
-          No briefs yet. Share <code>/s/{shop.slug}</code> with clients.
+          No briefs yet. Share the QR/link above with clients.
         </p>
       ) : (
         <div className="space-y-3">
@@ -79,7 +84,9 @@ export default async function QueuePage({ params }: { params: { slug: string } }
                     <Badge tone={STATUS_TONE[b.status] ?? "neutral"}>
                       {LABELS.briefStatus[b.status as keyof typeof LABELS.briefStatus] ?? b.status}
                     </Badge>
-                    <Badge tone="neutral">{LABELS.useCaseTag[b.useCaseTag as keyof typeof LABELS.useCaseTag] ?? b.useCaseTag}</Badge>
+                    <Badge tone="neutral">
+                      {LABELS.useCaseTag[b.useCaseTag as keyof typeof LABELS.useCaseTag] ?? b.useCaseTag}
+                    </Badge>
                   </div>
                 </div>
               </Card>

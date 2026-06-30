@@ -4,7 +4,8 @@
  * 100% deterministic: drawn from the structured Spec via lib/diagram.ts. No AI,
  * no image input. Same spec → same diagram. Zones are colour-coded to guard
  * lengths and LABELLED with the actual numbers, because the number is the
- * deliverable; the colour is only a fast secondary cue.
+ * deliverable; the colour is only a fast secondary cue. The exportable SVG card
+ * (lib/specCard.ts) mirrors this geometry so the shared image agrees.
  */
 
 import type { Spec } from "@/lib/spec";
@@ -58,12 +59,7 @@ export function HeadDiagram({
           <FrontHead gid={gid} topLabel={topLabel} sideLabel={sideLabel} />
         </View>
         <View label="Side">
-          <SideHead
-            gid={gid}
-            spec={spec}
-            topLabel={topLabel}
-            sideLabel={sideLabel}
-          />
+          <SideHead gid={gid} spec={spec} topLabel={topLabel} sideLabel={sideLabel} />
         </View>
         <View label="Back">
           <BackHead gid={gid} spec={spec} sideLabel={sideLabel} />
@@ -104,17 +100,12 @@ function FrontHead({
 }) {
   return (
     <>
-      {/* ears */}
       <ellipse cx="20" cy="84" rx="6" ry="10" fill={SKIN_DARK} stroke={OUTLINE} strokeWidth="1" />
       <ellipse cx="90" cy="84" rx="6" ry="10" fill={SKIN_DARK} stroke={OUTLINE} strokeWidth="1" />
-      {/* hair cranium (gradient = fade) */}
       <ellipse cx="55" cy="66" rx="40" ry="48" fill={`url(#${gid})`} stroke={OUTLINE} strokeWidth="1.2" />
-      {/* face skin, leaving hair as a frame at top + temples */}
       <ellipse cx="55" cy="82" rx="31" ry="40" fill={SKIN} />
-      {/* brow + simple features for orientation */}
       <line x1="40" y1="78" x2="50" y2="78" stroke={SKIN_DARK} strokeWidth="2" strokeLinecap="round" />
       <line x1="60" y1="78" x2="70" y2="78" stroke={SKIN_DARK} strokeWidth="2" strokeLinecap="round" />
-      {/* labels */}
       <ZoneTag x={55} y={30} text={topLabel} anchor="middle" />
       <ZoneTag x={14} y={68} text={sideLabel} anchor="start" />
       <ZoneTag x={96} y={68} text={sideLabel} anchor="end" />
@@ -135,9 +126,7 @@ function SideHead({
 }) {
   return (
     <>
-      {/* hair cranium */}
       <ellipse cx="52" cy="64" rx="42" ry="48" fill={`url(#${gid})`} stroke={OUTLINE} strokeWidth="1.2" />
-      {/* face skin shifted forward (right) — leaves hair at back + crown */}
       <path
         d="M64 30
            q26 6 26 44
@@ -148,15 +137,10 @@ function SideHead({
            q0 -38 30 -42 z"
         fill={SKIN}
       />
-      {/* nose hint */}
       <path d="M90 74 q6 4 0 8" fill="none" stroke={SKIN_DARK} strokeWidth="2" strokeLinecap="round" />
-      {/* ear */}
       <ellipse cx="60" cy="80" rx="6" ry="9" fill={SKIN_DARK} stroke={OUTLINE} strokeWidth="1" />
-      {/* sideburn strip */}
       <rect x="66" y="86" width="5" height="14" rx="2" fill={sidesColorHex(spec)} />
-      {/* nape / neckline marker at lower back */}
       <NecklineMarkerSide neckline={spec.neckline} colorSides={sidesColorHex(spec)} />
-      {/* labels */}
       <ZoneTag x={48} y={26} text={topLabel} anchor="middle" />
       <ZoneTag x={12} y={92} text={sideLabel} anchor="start" />
     </>
@@ -174,25 +158,14 @@ function BackHead({
 }) {
   return (
     <>
-      {/* neck */}
       <rect x="42" y="104" width="26" height="34" rx="6" fill={SKIN} stroke={OUTLINE} strokeWidth="1" />
-      {/* ears */}
       <ellipse cx="16" cy="74" rx="5" ry="10" fill={SKIN_DARK} stroke={OUTLINE} strokeWidth="1" />
       <ellipse cx="94" cy="74" rx="5" ry="10" fill={SKIN_DARK} stroke={OUTLINE} strokeWidth="1" />
-      {/* hair cranium */}
       <ellipse cx="55" cy="62" rx="40" ry="50" fill={`url(#${gid})`} stroke={OUTLINE} strokeWidth="1.2" />
-      {/* neckline shape drawn over the bottom of the hair */}
       <NecklineBack neckline={spec.neckline} colorSides={sidesColorHex(spec)} />
-      {/* labels */}
       <ZoneTag x={14} y={64} text={sideLabel} anchor="start" />
       <ZoneTag x={96} y={64} text={sideLabel} anchor="end" />
-      <text
-        x="55"
-        y="128"
-        textAnchor="middle"
-        className="fill-neutral-600"
-        style={{ fontSize: 8 }}
-      >
+      <text x="55" y="128" textAnchor="middle" className="fill-neutral-600" style={{ fontSize: 8 }}>
         {LABELS.neckline[spec.neckline].toLowerCase()} neckline
       </text>
     </>
@@ -213,7 +186,6 @@ function NecklineBack({
     case "rounded":
       return <path d="M20 100 q35 22 70 0 z" fill={colorSides} stroke={OUTLINE} strokeWidth="1" />;
     case "tapered":
-      // fades into skin: soft triangle, no hard edge
       return <path d="M24 98 q31 30 62 0 q-31 8 -62 0 z" fill={colorSides} opacity={0.7} />;
     case "natural":
     default:

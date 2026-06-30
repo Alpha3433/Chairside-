@@ -42,12 +42,7 @@ export async function POST(req: Request) {
   });
 
   await prisma.visit.create({
-    data: {
-      clientId: client.id,
-      shopId: shop.id,
-      briefed: false,
-      visitedAt,
-    },
+    data: { clientId: client.id, shopId: shop.id, briefed: false, visitedAt },
   });
 
   return NextResponse.json({ ok: true });

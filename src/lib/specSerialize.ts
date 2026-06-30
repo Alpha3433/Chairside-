@@ -27,6 +27,13 @@ import { generateSummary } from "./specSummary";
 // Validation helpers.
 // ---------------------------------------------------------------------------
 
+export class SpecValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpecValidationError";
+  }
+}
+
 function oneOf<T extends readonly string[]>(
   allowed: T,
   value: unknown,
@@ -50,13 +57,6 @@ function intInRange(value: unknown, field: string, min: number, max: number): nu
   return Math.round(n);
 }
 
-export class SpecValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "SpecValidationError";
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Untrusted input -> validated Spec.
 // ---------------------------------------------------------------------------
@@ -75,7 +75,8 @@ export function parseSpec(input: unknown): Spec {
       o.beardLengthMm ?? (o.beard as Record<string, unknown> | undefined)?.lengthMm;
     beard = {
       style,
-      lengthMm: rawLen == null || rawLen === "" ? null : intInRange(rawLen, "beard.lengthMm", 0, 60),
+      lengthMm:
+        rawLen == null || rawLen === "" ? null : intInRange(rawLen, "beard.lengthMm", 0, 60),
     };
   }
 

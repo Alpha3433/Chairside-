@@ -1,9 +1,10 @@
 /**
  * diagram.ts — pure helpers for the deterministic head diagram.
  *
- * Every value here is a function of the structured Spec. The diagram is drawn
- * from these numbers (lib/../components/HeadDiagram.tsx), NOT from any image.
- * Same spec in → same diagram out, always.
+ * Every value here is a function of the structured Spec. The diagram (both the
+ * React HeadDiagram and the standalone exportable SVG in lib/specCard.ts) is
+ * drawn from these numbers, NOT from any image. Same spec in → same diagram out,
+ * always.
  */
 
 import {
@@ -120,7 +121,7 @@ function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
 }
 
-/** Short top-zone label, e.g. "~25mm" or "#8". */
+/** Short top-zone label, e.g. "~25mm (#8)" or "~40mm". */
 export function topZoneLabel(spec: Spec): string {
   if (spec.topMethod === "clipper" && spec.topGuard && spec.topGuard !== "scissor") {
     return `~${spec.topLengthMm}mm (${guardLabel(spec.topGuard)})`;

@@ -9,6 +9,7 @@ import { BarberShell } from "@/components/barber/BarberShell";
 import { Badge, Card } from "@/components/ui";
 import { LABELS, type HairType, type Density } from "@/lib/spec";
 import { formatDate, timeAgo } from "@/lib/format";
+import { briefSharePath } from "@/lib/urls";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +24,7 @@ export default async function BriefDetail({
 
   const brief = await prisma.brief.findUnique({
     where: { id: params.id },
-    include: {
-      client: true,
-      requestedSpec: true,
-      barberSpec: true,
-      actualSpec: true,
-    },
+    include: { client: true, requestedSpec: true, barberSpec: true, actualSpec: true },
   });
   if (!brief || brief.shopId !== shop.id) notFound();
 
@@ -56,12 +52,21 @@ export default async function BriefDetail({
           <p className="mt-1 text-xs text-neutral-400">
             {LABELS.hairType[hairContext.hairType]} · {LABELS.density[hairContext.density]} density
             {brief.client.faceShape ? ` · ${LABELS.faceShape[brief.client.faceShape as keyof typeof LABELS.faceShape]} face` : ""}
-            {" · submitted "}{timeAgo(brief.createdAt)}
+            {" · submitted "}
+            {timeAgo(brief.createdAt)}
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <Badge tone="purple">{LABELS.useCaseTag[brief.useCaseTag as keyof typeof LABELS.useCaseTag] ?? brief.useCaseTag}</Badge>
           <Badge tone="neutral">{LABELS.briefStatus[brief.status as keyof typeof LABELS.briefStatus] ?? brief.status}</Badge>
+          <a
+            href={briefSharePath(brief.id)}
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-medium text-neutral-500 underline hover:text-neutral-800"
+          >
+            Open shareable spec ↗
+          </a>
         </div>
       </div>
 
@@ -120,7 +125,9 @@ export default async function BriefDetail({
       {/* Portable history */}
       <div className="mt-8">
         <h3 className="text-sm font-bold text-ink">Client history (all shops)</h3>
-        <p className="text-xs text-neutral-400">This travels with the client — it&apos;s keyed to their contact, not your shop.</p>
+        <p className="text-xs text-neutral-400">
+          This travels with the client — it&apos;s keyed to their contact, not your shop.
+        </p>
         {history.length === 0 ? (
           <p className="mt-3 text-sm text-neutral-500">No other visits on record.</p>
         ) : (
@@ -136,7 +143,9 @@ export default async function BriefDetail({
                 </div>
                 <p className="mt-0.5 text-sm text-neutral-600">{h.summary}</p>
                 <div className="mt-1 flex gap-1.5">
-                  <Badge tone={h.isActual ? "green" : "neutral"}>{h.isActual ? "Completed" : LABELS.briefStatus[h.status as keyof typeof LABELS.briefStatus] ?? h.status}</Badge>
+                  <Badge tone={h.isActual ? "green" : "neutral"}>
+                    {h.isActual ? "Completed" : LABELS.briefStatus[h.status as keyof typeof LABELS.briefStatus] ?? h.status}
+                  </Badge>
                   <Badge tone="neutral">{LABELS.useCaseTag[h.useCaseTag as keyof typeof LABELS.useCaseTag] ?? h.useCaseTag}</Badge>
                 </div>
               </Card>

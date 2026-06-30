@@ -8,7 +8,8 @@
  * new shop, is matched by their contact key and their cross-shop history loads.
  *
  * The spec is only ever built from structured controls (SpecControls). The
- * optional render is illustrative and clearly fenced (Principle 3).
+ * optional render is illustrative and clearly fenced (Principle 3). On submit,
+ * the client gets a shareable link + image (ShareSpec) for the saved spec.
  */
 
 import { useMemo, useState } from "react";
@@ -28,6 +29,7 @@ import { generateSummary } from "@/lib/specSummary";
 import { isPlausibleContact } from "@/lib/contact";
 import { SpecControls } from "@/components/SpecControls";
 import { SpecSheet } from "@/components/SpecSheet";
+import { ShareSpec } from "@/components/ShareSpec";
 import { Segmented, TextInput, TextArea, Labeled } from "@/components/controls";
 import { btn, Badge } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -221,13 +223,7 @@ export function ClientFlow({
         />
       )}
 
-      {step === "pick" && (
-        <Pick
-          baseStyles={baseStyles}
-          onBack={() => setStep("hair")}
-          onPick={pickBase}
-        />
-      )}
+      {step === "pick" && <Pick baseStyles={baseStyles} onBack={() => setStep("hair")} onPick={pickBase} />}
 
       {step === "customize" && spec && (
         <Customize
@@ -299,7 +295,9 @@ function Header({ shopName, step, stepIndex }: { shopName: string; step: Step; s
           Chairside · {shopName}
         </p>
         {step !== "done" ? (
-          <p className="text-xs text-neutral-400">Step {stepIndex + 1} of {STEP_ORDER.length}</p>
+          <p className="text-xs text-neutral-400">
+            Step {stepIndex + 1} of {STEP_ORDER.length}
+          </p>
         ) : null}
       </div>
       {step !== "done" ? (
@@ -464,7 +462,10 @@ function Hair({
         </Labeled>
         <Labeled label="Face shape (optional)">
           <Segmented
-            options={[{ value: "" as const, label: "Skip" }, ...FACE_SHAPES.map((v) => ({ value: v, label: LABELS.faceShape[v] }))]}
+            options={[
+              { value: "" as const, label: "Skip" },
+              ...FACE_SHAPES.map((v) => ({ value: v, label: LABELS.faceShape[v] })),
+            ]}
             value={faceShape}
             onChange={onFaceShape}
           />
@@ -490,7 +491,10 @@ function Pick({
 
   return (
     <div>
-      <StepTitle title="Pick a starting point" sub="You'll fine-tune the exact numbers next. These are barber-validated base cuts." />
+      <StepTitle
+        title="Pick a starting point"
+        sub="You'll fine-tune the exact numbers next. These are barber-validated base cuts."
+      />
       <div className="mb-4">
         <Segmented
           options={lengths.map((l) => ({ value: l, label: l === "all" ? "All" : l[0].toUpperCase() + l.slice(1) }))}
@@ -508,11 +512,7 @@ function Pick({
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-ink">{b.name}</span>
-              {b.barberValidated ? (
-                <Badge tone="green">Validated</Badge>
-              ) : (
-                <Badge tone="amber">Placeholder</Badge>
-              )}
+              {b.barberValidated ? <Badge tone="green">Validated</Badge> : <Badge tone="amber">Placeholder</Badge>}
             </div>
             <p className="mt-1 text-sm text-neutral-500">{b.description}</p>
             <p className="mt-2 text-xs text-neutral-400">{b.summary}</p>
@@ -594,7 +594,10 @@ function Details({
 }) {
   return (
     <div>
-      <StepTitle title="A little context" sub="Why now? It helps your barber read the room — this tool is for the moments that matter, not 'the usual'." />
+      <StepTitle
+        title="A little context"
+        sub="Why now? It helps your barber read the room — this tool is for the moments that matter, not 'the usual'."
+      />
       <Labeled label="What's this visit about?">
         <div className="grid grid-cols-1 gap-2">
           {USE_CASE_TAGS.map((t) => (
@@ -604,7 +607,9 @@ function Details({
               onClick={() => onUseCase(t)}
               className={cn(
                 "rounded-xl border px-4 py-3 text-left text-sm font-medium transition",
-                useCaseTag === t ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400",
+                useCaseTag === t
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400",
               )}
             >
               {LABELS.useCaseTag[t]}
@@ -615,7 +620,11 @@ function Details({
 
       <div className="mt-5">
         <Labeled label="Anything to add for the barber? (optional)">
-          <TextArea value={notes} onChange={onNotes} placeholder="e.g. keep it longer at the front, I have a cowlick on the crown…" />
+          <TextArea
+            value={notes}
+            onChange={onNotes}
+            placeholder="e.g. keep it longer at the front, I have a cowlick on the crown…"
+          />
         </Labeled>
       </div>
 
@@ -628,18 +637,13 @@ function Details({
           A picture can help, but it never sets the numbers — the spec does.
         </p>
         {renderEnabled ? (
-          <button
-            type="button"
-            onClick={onRender}
-            disabled={rendering}
-            className={cn(btn.base, btn.secondary, "mt-3 w-full")}
-          >
+          <button type="button" onClick={onRender} disabled={rendering} className={cn(btn.base, btn.secondary, "mt-3 w-full")}>
             {rendering ? "Generating…" : renderUrl ? "Regenerate illustration" : "Generate illustration"}
           </button>
         ) : (
           <p className="mt-2 text-[11px] text-neutral-400">
-            Rendering is off in this build, so the labelled placeholder below stands
-            in. The spec is unaffected.
+            Rendering is off in this build, so the labelled placeholder below stands in. The spec is
+            unaffected.
           </p>
         )}
       </div>
@@ -726,10 +730,19 @@ function Done({
         <p className="mt-1 text-sm text-emerald-700">
           Show this spec to your barber, or it&apos;s already waiting in their queue.
         </p>
-        {briefId ? (
-          <p className="mt-2 text-[11px] text-emerald-600">Brief ref: {briefId.slice(0, 8)}</p>
-        ) : null}
+        {briefId ? <p className="mt-2 text-[11px] text-emerald-600">Brief ref: {briefId.slice(0, 8)}</p> : null}
       </div>
+
+      {briefId ? (
+        <div className="mb-5">
+          <ShareSpec
+            path={`/b/${briefId}`}
+            imagePath={`/b/${briefId}/image.svg`}
+            title="Your cut"
+          />
+        </div>
+      ) : null}
+
       <SpecSheet
         spec={spec}
         summary={summary}
@@ -739,8 +752,8 @@ function Done({
         showIllustrationSlot={!!renderUrl}
       />
       <p className="mt-6 text-center text-xs text-neutral-400">
-        Your profile and this cut are saved to your contact — they&apos;ll be
-        here next time, at this shop or any other.
+        Your profile and this cut are saved to your contact — they&apos;ll be here next time, at
+        this shop or any other.
       </p>
     </div>
   );
