@@ -2,14 +2,16 @@
 
 /**
  * ClientFlow — the mobile-first, no-install client journey:
- *   identity → hair context → pick base → customise → details → review → done
+ *   identity → hair → [capture] → pick → customise → details → review → done
  *
- * Recognition (step 1) is the portability moment: a returning person, even at a
- * new shop, is matched by their contact key and their cross-shop history loads.
+ * The optional CAPTURE step is the visualization layer: the client photographs
+ * their head (front + sides), then the chosen look is rendered onto their own
+ * photo in the customise/details steps (TryOn). Capture is skippable — skipping
+ * degrades cleanly to the original text-only brief.
  *
- * The spec is only ever built from structured controls (SpecControls). The
- * optional render is illustrative and clearly fenced (Principle 3). On submit,
- * the client gets a shareable link + image (ShareSpec) for the saved spec.
+ * Recognition (step 1) is the portability moment. The spec is only ever built
+ * from structured controls (SpecControls); the renders are illustrative and
+ * fenced (Principle 1). On submit the brief carries the captured photo ids.
  */
 
 import { useMemo, useState } from "react";
@@ -33,6 +35,8 @@ import { ShareSpec } from "@/components/ShareSpec";
 import { Segmented, TextInput, TextArea, Labeled } from "@/components/controls";
 import { btn, Badge } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { CaptureFlow, type CapturedPhoto } from "./CaptureFlow";
+import { TryOn } from "./TryOn";
 
 export interface BaseStyleOption {
   id: string;
@@ -54,20 +58,33 @@ interface HistoryItem {
   isActual: boolean;
 }
 
-type Step = "identity" | "hair" | "pick" | "customize" | "details" | "review" | "done";
-const STEP_ORDER: Step[] = ["identity", "hair", "pick", "customize", "details", "review"];
+type Step =
+  | "identity"
+  | "hair"
+  | "capture"
+  | "pick"
+  | "customize"
+  | "details"
+  | "review"
+  | "done";
 
 export function ClientFlow({
   shopName,
   shopSlug,
   baseStyles,
   renderEnabled,
+  visualizationEnabled,
 }: {
   shopName: string;
   shopSlug: string;
   baseStyles: BaseStyleOption[];
   renderEnabled: boolean;
+  visualizationEnabled: boolean;
 }) {
+  const stepOrder: Step[] = visualizationEnabled
+    ? ["identity", "hair", "capture", "pick", "customize", "details", "review"]
+    : ["identity", "hair", "pick", "customize", "details", "review"];
+
   const [step, setStep] = useState<Step>("identity");
 
   // identity
@@ -80,6 +97,9 @@ export function ClientFlow({
   const [hairType, setHairType] = useState<HairType>("straight");
   const [density, setDensity] = useState<Density>("medium");
   const [faceShape, setFaceShape] = useState<FaceShape | "">("");
+
+  // photos (visualization layer)
+  const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
 
   // style
   const [baseStyleId, setBaseStyleId] = useState<string | null>(null);
@@ -97,7 +117,8 @@ export function ClientFlow({
   const [briefId, setBriefId] = useState<string | null>(null);
 
   const summary = useMemo(() => (spec ? generateSummary(spec) : ""), [spec]);
-  const stepIndex = STEP_ORDER.indexOf(step);
+  const stepIndex = stepOrder.indexOf(step);
+  const afterHair: Step = visualizationEnabled ? "capture" : "pick";
 
   async function lookup() {
     setLooking(true);
@@ -119,7 +140,6 @@ export function ClientFlow({
         setRecognized(null);
       }
     } catch {
-      // Non-fatal: recognition is a nicety, not a gate.
       setRecognized(null);
     } finally {
       setLooking(false);
@@ -171,7 +191,7 @@ export function ClientFlow({
           spec,
           useCaseTag,
           notes: notes || undefined,
-          renderUrl: renderUrl || undefined,
+          photoIds: photos.map((p) => p.id),
         }),
       });
       const data = await res.json();
@@ -190,7 +210,7 @@ export function ClientFlow({
 
   return (
     <main className="mx-auto min-h-screen max-w-md px-4 pb-28 pt-5">
-      <Header shopName={shopName} step={step} stepIndex={stepIndex} />
+      <Header shopName={shopName} step={step} stepIndex={stepIndex} steps={stepOrder} />
 
       {error ? (
         <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">
@@ -219,11 +239,29 @@ export function ClientFlow({
           onDensity={setDensity}
           onFaceShape={setFaceShape}
           onBack={() => setStep("identity")}
-          onContinue={() => setStep("pick")}
+          onContinue={() => setStep(afterHair)}
         />
       )}
 
-      {step === "pick" && <Pick baseStyles={baseStyles} onBack={() => setStep("hair")} onPick={pickBase} />}
+      {step === "capture" && (
+        <CaptureFlow
+          contact={contact}
+          initial={photos}
+          onComplete={(p) => {
+            setPhotos(p);
+            setStep("pick");
+          }}
+          onSkip={() => {
+            setPhotos([]);
+            setStep("pick");
+          }}
+          onBack={() => setStep("hair")}
+        />
+      )}
+
+      {step === "pick" && (
+        <Pick baseStyles={baseStyles} onBack={() => setStep(afterHair)} onPick={pickBase} />
+      )}
 
       {step === "customize" && spec && (
         <Customize
@@ -232,6 +270,7 @@ export function ClientFlow({
           hairType={hairType}
           density={density}
           baseName={baseStyles.find((b) => b.id === baseStyleId)?.name}
+          photos={photos}
           onChange={setSpec}
           onBack={() => setStep("pick")}
           onContinue={() => setStep("details")}
@@ -244,6 +283,7 @@ export function ClientFlow({
           summary={summary}
           hairType={hairType}
           density={density}
+          photos={photos}
           useCaseTag={useCaseTag}
           notes={notes}
           renderEnabled={renderEnabled}
@@ -266,6 +306,7 @@ export function ClientFlow({
           baseName={baseStyles.find((b) => b.id === baseStyleId)?.name}
           useCaseTag={useCaseTag}
           renderUrl={renderUrl}
+          photos={photos}
           submitting={submitting}
           onBack={() => setStep("details")}
           onSubmit={submit}
@@ -281,13 +322,24 @@ export function ClientFlow({
           shopName={shopName}
           briefId={briefId}
           renderUrl={renderUrl}
+          photoCount={photos.length}
         />
       )}
     </main>
   );
 }
 
-function Header({ shopName, step, stepIndex }: { shopName: string; step: Step; stepIndex: number }) {
+function Header({
+  shopName,
+  step,
+  stepIndex,
+  steps,
+}: {
+  shopName: string;
+  step: Step;
+  stepIndex: number;
+  steps: Step[];
+}) {
   return (
     <div className="mb-5">
       <div className="flex items-center justify-between">
@@ -296,13 +348,13 @@ function Header({ shopName, step, stepIndex }: { shopName: string; step: Step; s
         </p>
         {step !== "done" ? (
           <p className="text-xs text-neutral-400">
-            Step {stepIndex + 1} of {STEP_ORDER.length}
+            Step {stepIndex + 1} of {steps.length}
           </p>
         ) : null}
       </div>
       {step !== "done" ? (
         <div className="mt-2 flex gap-1">
-          {STEP_ORDER.map((s, i) => (
+          {steps.map((s, i) => (
             <div
               key={s}
               className={cn("h-1 flex-1 rounded-full", i <= stepIndex ? "bg-neutral-900" : "bg-neutral-200")}
@@ -536,6 +588,7 @@ function Customize({
   hairType,
   density,
   baseName,
+  photos,
   onChange,
   onBack,
   onContinue,
@@ -545,6 +598,7 @@ function Customize({
   hairType: HairType;
   density: Density;
   baseName?: string;
+  photos: CapturedPhoto[];
   onChange: (s: Spec) => void;
   onBack: () => void;
   onContinue: () => void;
@@ -552,6 +606,11 @@ function Customize({
   return (
     <div>
       <StepTitle title="Dial in the details" sub="Every control updates the spec your barber reads. The numbers are the point." />
+      {photos.length > 0 ? (
+        <div className="mb-4">
+          <TryOn photos={photos} spec={spec} />
+        </div>
+      ) : null}
       <div className="mb-5">
         <SpecSheet spec={spec} summary={summary} title={baseName ?? "Your cut"} hairContext={{ hairType, density }} />
       </div>
@@ -566,6 +625,7 @@ function Details({
   summary,
   hairType,
   density,
+  photos,
   useCaseTag,
   notes,
   renderEnabled,
@@ -581,6 +641,7 @@ function Details({
   summary: string;
   hairType: HairType;
   density: Density;
+  photos: CapturedPhoto[];
   useCaseTag: UseCaseTag | null;
   notes: string;
   renderEnabled: boolean;
@@ -628,25 +689,34 @@ function Details({
         </Labeled>
       </div>
 
-      <div className="mt-5 rounded-xl border border-neutral-200 p-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-ink">Optional illustration</p>
-          <Badge tone="neutral">Not a guarantee</Badge>
-        </div>
-        <p className="mt-1 text-xs text-neutral-500">
-          A picture can help, but it never sets the numbers — the spec does.
-        </p>
-        {renderEnabled ? (
-          <button type="button" onClick={onRender} disabled={rendering} className={cn(btn.base, btn.secondary, "mt-3 w-full")}>
-            {rendering ? "Generating…" : renderUrl ? "Regenerate illustration" : "Generate illustration"}
-          </button>
-        ) : (
-          <p className="mt-2 text-[11px] text-neutral-400">
-            Rendering is off in this build, so the labelled placeholder below stands in. The spec is
-            unaffected.
+      {photos.length > 0 ? (
+        <div className="mt-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Preview on your photos
           </p>
-        )}
-      </div>
+          <TryOn photos={photos} spec={spec} />
+        </div>
+      ) : (
+        <div className="mt-5 rounded-xl border border-neutral-200 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-ink">Optional illustration</p>
+            <Badge tone="neutral">Not a guarantee</Badge>
+          </div>
+          <p className="mt-1 text-xs text-neutral-500">
+            A picture can help, but it never sets the numbers — the spec does.
+          </p>
+          {renderEnabled ? (
+            <button type="button" onClick={onRender} disabled={rendering} className={cn(btn.base, btn.secondary, "mt-3 w-full")}>
+              {rendering ? "Generating…" : renderUrl ? "Regenerate illustration" : "Generate illustration"}
+            </button>
+          ) : (
+            <p className="mt-2 text-[11px] text-neutral-400">
+              Rendering is off in this build, so the labelled placeholder below stands in. The spec is
+              unaffected.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mt-5">
         <SpecSheet
@@ -655,7 +725,7 @@ function Details({
           title="Your cut"
           hairContext={{ hairType, density }}
           renderUrl={renderUrl}
-          showIllustrationSlot
+          showIllustrationSlot={photos.length === 0}
         />
       </div>
 
@@ -672,6 +742,7 @@ function Review({
   baseName,
   useCaseTag,
   renderUrl,
+  photos,
   submitting,
   onBack,
   onSubmit,
@@ -683,6 +754,7 @@ function Review({
   baseName?: string;
   useCaseTag: UseCaseTag;
   renderUrl: string | null;
+  photos: CapturedPhoto[];
   submitting: boolean;
   onBack: () => void;
   onSubmit: () => void;
@@ -692,14 +764,20 @@ function Review({
       <StepTitle title="Review & send to the chair" sub="This is exactly what your barber will see." />
       <div className="mb-3 flex items-center gap-2">
         <Badge tone="purple">{LABELS.useCaseTag[useCaseTag]}</Badge>
+        {photos.length > 0 ? <Badge tone="blue">{photos.length} photo{photos.length === 1 ? "" : "s"}</Badge> : null}
       </div>
+      {photos.length > 0 ? (
+        <div className="mb-4">
+          <TryOn photos={photos} spec={spec} />
+        </div>
+      ) : null}
       <SpecSheet
         spec={spec}
         summary={summary}
         title={baseName ?? "Your cut"}
         hairContext={{ hairType, density }}
         renderUrl={renderUrl}
-        showIllustrationSlot={!!renderUrl}
+        showIllustrationSlot={photos.length === 0 && !!renderUrl}
       />
       <FooterNav onBack={onBack} onNext={onSubmit} nextLabel="Send to barber" loading={submitting} />
     </div>
@@ -714,6 +792,7 @@ function Done({
   shopName,
   briefId,
   renderUrl,
+  photoCount,
 }: {
   spec: Spec;
   summary: string;
@@ -722,38 +801,30 @@ function Done({
   shopName: string;
   briefId: string | null;
   renderUrl: string | null;
+  photoCount: number;
 }) {
   return (
     <div>
       <div className="mb-4 rounded-xl bg-emerald-50 px-4 py-4 text-center ring-1 ring-emerald-200">
         <p className="text-lg font-bold text-emerald-800">Sent to {shopName} ✓</p>
         <p className="mt-1 text-sm text-emerald-700">
-          Show this spec to your barber, or it&apos;s already waiting in their queue.
+          {photoCount > 0
+            ? `Your photos, previews, and the spec are in your barber's queue.`
+            : `Show this spec to your barber, or it's already waiting in their queue.`}
         </p>
         {briefId ? <p className="mt-2 text-[11px] text-emerald-600">Brief ref: {briefId.slice(0, 8)}</p> : null}
       </div>
 
       {briefId ? (
         <div className="mb-5">
-          <ShareSpec
-            path={`/b/${briefId}`}
-            imagePath={`/b/${briefId}/image.svg`}
-            title="Your cut"
-          />
+          <ShareSpec path={`/b/${briefId}`} imagePath={`/b/${briefId}/image.svg`} title="Your cut" />
         </div>
       ) : null}
 
-      <SpecSheet
-        spec={spec}
-        summary={summary}
-        title="Your cut"
-        hairContext={{ hairType, density }}
-        renderUrl={renderUrl}
-        showIllustrationSlot={!!renderUrl}
-      />
+      <SpecSheet spec={spec} summary={summary} title="Your cut" hairContext={{ hairType, density }} renderUrl={renderUrl} />
       <p className="mt-6 text-center text-xs text-neutral-400">
-        Your profile and this cut are saved to your contact — they&apos;ll be here next time, at
-        this shop or any other.
+        Your profile and this cut are saved to your contact — they&apos;ll be here next time, at this
+        shop or any other.
       </p>
     </div>
   );

@@ -25,16 +25,19 @@ datasource db {
 // Client — portable, shop-agnostic. Keyed to contact. THE moat.
 // ---------------------------------------------------------------------------
 model Client {
-  id        String   @id @default(cuid())
-  name      String
-  contact   String   @unique // phone OR email — the portable key across shops
-  hairType  String // straight | wavy | curly | coily
-  density   String // thin | medium | thick
-  faceShape String? // optional
-  createdAt DateTime @default(now())
+  id             String    @id @default(cuid())
+  name           String
+  contact        String    @unique // phone OR email — the portable key across shops
+  hairType       String // straight | wavy | curly | coily
+  density        String // thin | medium | thick
+  faceShape      String? // optional
+  // When the client consented to capturing/storing face photos (Principle 5).
+  photoConsentAt DateTime?
+  createdAt      DateTime  @default(now())
 
   briefs Brief[]
   visits Visit[]
+  photos Photo[] // portable, shop-agnostic — travels with the client
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +155,8 @@ model Brief {
   seenAt      DateTime?
   completedAt DateTime?
 
-  visit Visit?
+  visit  Visit?
+  photos Photo[] // captured multi-angle photos attached to this brief
 }
 
 // ---------------------------------------------------------------------------
@@ -174,4 +178,58 @@ model Visit {
   createdAt DateTime @default(now())
 
   @@index([clientId, shopId])
+}
+
+// ---------------------------------------------------------------------------
+// Photo — a captured head/face angle (front | left | right | back).
+//
+// VISUALIZATION LAYER. Photos belong to the portable Client (so they travel
+// across shops) and are linked to a Brief once submitted. `storageKey` is an
+// opaque key into the storage stub (lib/storage.ts) — NEVER a public URL; bytes
+// are served only through the gated /api/photos/[id] route. Faces are sensitive
+// data (Principle 5): consent is recorded on Client.photoConsentAt, and photos
+// are deletable.
+// ---------------------------------------------------------------------------
+model Photo {
+  id         String  @id @default(cuid())
+  clientId   String
+  client     Client  @relation(fields: [clientId], references: [id])
+  briefId    String?
+  brief      Brief?  @relation(fields: [briefId], references: [id])
+  angle      String // front | left | right | back
+  storageKey String // opaque key into the storage backend (not a public path)
+  mimeType   String  @default("image/jpeg")
+  width      Int?
+  height     Int?
+  createdAt  DateTime @default(now())
+
+  renders Render[]
+
+  @@index([clientId])
+  @@index([briefId])
+}
+
+// ---------------------------------------------------------------------------
+// Render — an AI/stub illustration of a chosen spec painted onto a Photo.
+//
+// The render is the LOOK only; it never produces spec NUMBERS (Principle 1).
+// Keyed by (photoId, specHash) so re-viewing the same spec on the same photo
+// reuses the cached render and never re-bills the metered provider (Principle 4).
+// `specHash` is the deterministic hash of the structured Spec (lib/specHash.ts),
+// which is how a brief's requested spec finds its renders without a brittle FK.
+// ---------------------------------------------------------------------------
+model Render {
+  id         String  @id @default(cuid())
+  photoId    String
+  photo      Photo   @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  angle      String // mirrors the source photo's angle
+  specHash   String // hash of the canonical structured spec — cache key + spec linkage
+  storageKey String? // null while pending/failed
+  mimeType   String  @default("image/svg+xml")
+  status     String  @default("done") // done | stub | failed
+  provider   String  @default("stub")
+  createdAt  DateTime @default(now())
+
+  @@unique([photoId, specHash]) // one cached render per (photo, spec content)
+  @@index([specHash])
 }

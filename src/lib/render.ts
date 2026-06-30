@@ -25,6 +25,15 @@ export function isRenderEnabled(): boolean {
 }
 
 /**
+ * Whether the selfie + multi-angle visualization step is offered in the client
+ * flow. Defaults ON so it's demoable; the GENERATIVE render inside it still
+ * respects isRenderEnabled() (stub composite when off — see lib/photoRender.ts).
+ */
+export function isVisualizationEnabled(): boolean {
+  return (process.env.VISUALIZATION_ENABLED ?? "true") !== "false";
+}
+
+/**
  * Produce an illustrative image URL for a spec, or null when rendering is off.
  *
  * @returns image URL (string) or null. NEVER returns spec data.

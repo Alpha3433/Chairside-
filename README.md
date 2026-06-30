@@ -47,6 +47,9 @@ Then:
   person, so it loads here — across shops, live.
 - **Shareable spec:** finish a client flow and you get a link + QR + "Save image" for the
   spec at `/b/<id>` (image at `/b/<id>/image.svg`).
+- **Try-on (visualization layer):** on a phone, the client flow's capture step uses the camera
+  to take front + both sides, then renders the chosen look onto those photos (tap-to-preview);
+  the photos + previews land in the barber's brief view. See below.
 
 > **Restricted-network note.** Prisma downloads its engine binaries from
 > `binaries.prisma.sh` on postinstall, and some egress proxies reset large downloads
@@ -77,8 +80,11 @@ Copy `.env.example` to `.env`. The defaults work out of the box for local dev.
 | `DATABASE_URL` | `file:./dev.db` | SQLite for dev; swap to a Postgres URL to deploy. |
 | `APP_URL` | _(empty)_ | Public base URL for QR/share links. Empty = derive from the request host. |
 | `RETENTION_WINDOW_DAYS` | `42` | A return counts if it lands within this many days (6 weeks). |
-| `RENDER_ENABLED` | `false` | Turn the optional illustrative render on. Off → labelled placeholder. |
+| `RENDER_ENABLED` | `false` | Turn the optional illustrative render on (spec-card render AND the photo try-on). Off → labelled placeholder / stub. |
 | `RENDER_API_KEY` | — | Image API key, only read when `RENDER_ENABLED=true`. |
+| `RENDER_PROVIDER_URL` | — | Endpoint for the pluggable image-to-image / hair-inpainting provider used by the try-on. |
+| `VISUALIZATION_ENABLED` | `true` | Offer the selfie + multi-angle try-on step in the client flow. |
+| `STORAGE_DIR` | `.uploads` | Where captured photos + renders are stored in dev (filesystem stub, never public). |
 | `BARBER_ACCESS_CODE` | `letmein` | Shared code gating the barber dashboard (MVP-level). |
 
 ---
@@ -121,6 +127,44 @@ impossible, not just discouraged.
 
 ---
 
+## Visualization layer (selfie + multi-angle try-on)
+
+An extension of the client flow's "pick & customise" step — **not a separate app**. It reuses the
+spec engine, the base-style library, the portable profile, the data model, and the barber
+dashboard. Web-first, any phone, no install: capture uses the standard `getUserMedia` camera API.
+
+**The flow:** `identity → hair → capture → pick → customise (try-on) → details → review → done`.
+
+- **Guided capture** (`src/components/client/CaptureFlow.tsx`) — consent first (Principle 5), then
+  a silhouette to align to, an angle prompt, and a lightweight brightness/face check for *guidance
+  only* (native `FaceDetector` when available, with a graceful brightness fallback so iOS isn't
+  blocked). Front + both sides are the core set; **back is optional and honestly flagged** (a selfie
+  can't capture it). Per-angle retake; images are compressed client-side before upload.
+- **Try-on** (`src/components/client/TryOn.tsx`, `src/lib/photoRender.ts`) — tap renders the look
+  onto the client's **front** photo; "Preview all angles" renders the sides on demand. Every render
+  is **cached by `(photo, specHash)`** so re-viewing never re-bills (Principle 4). The provider is
+  **pluggable behind `RENDER_ENABLED` + `RENDER_PROVIDER_URL`**; with no key it returns a clearly
+  labelled **stub composite** (the photo + the spec), so it's demoable and honest.
+- **Sent to the barber** — on submit, captured photos + cached previews attach to the brief and the
+  portable profile; the brief view shows them next to the spec (`src/components/barber/BriefMedia.tsx`).
+
+**Render vs. spec stays strict (Principle 1):** the render paints the *look*; the guard sizes,
+lengths, fade and neckline always come from the structured spec via `parseSpec`. There is no
+image → spec path. Renders are always labelled *"Illustration — not a guarantee."*
+
+**Privacy (Principle 5):** consent is recorded (`Client.photoConsentAt`) before the camera turns
+on; photo/render bytes live in the storage stub (`src/lib/storage.ts`) **outside `/public`**, are
+served only through the gated `/api/photos/<id>` and `/api/renders/<id>` routes (unguessable id,
+`private, no-store`), are **never** put on the public share link, and are **deletable** (per-photo,
+or all of a client's via `DELETE /api/photos`). Production hardening seam: swap unguessable-id
+gating for signed URLs / ownership checks, and wire real hair-region masking into the provider call.
+
+**Try it live:** open `/s/fade-lab` on a phone (or a desktop with a webcam), reach the capture step,
+allow the camera, take the three angles, pick a style, and tap **Preview on my photo**. With
+`RENDER_ENABLED=false` (default) you'll see the labelled stub composite.
+
+---
+
 ## How the build answers the three known risks
 
 - **Risk 1 — barbers may not want this.** Briefs are tagged with a *use case*
@@ -151,6 +195,10 @@ impossible, not just discouraged.
 - **Shop**, **Barber**.
 - **Visit** — the unit of retention analysis; briefed visits link to a `Brief`, non-briefed
   ones are logged manually.
+- **Photo** *(visualization)* — a captured angle (front/left/right/back) on the portable
+  `Client`, linked to a `Brief` on submit; `storageKey` is opaque (never a public path).
+- **Render** — an illustration of a chosen spec on a `Photo`, unique on `(photoId, specHash)`
+  so it's billed at most once; the look only, never the numbers.
 
 > ⚠️ **The seeded specs are developer placeholders.** Guard numbers, fade heights and top
 > lengths in `prisma/seed.ts` are plausible scaffolding, **not** barber-validated ground
@@ -162,8 +210,10 @@ impossible, not just discouraged.
 ## Tech & scope
 
 Next.js 14 (App Router) · TypeScript · React · Tailwind · Prisma (SQLite dev → Postgres
-deploy) · `qrcode` for QR SVGs. Deployable to Vercel; swap the datasource `provider` to
-`postgresql`, point `DATABASE_URL` at Postgres, and set `APP_URL`.
+deploy) · `qrcode` for QR SVGs · browser `getUserMedia` + canvas capture and the native
+`FaceDetector` (with a brightness fallback) for the visualization layer — no native/3D deps.
+Deployable to Vercel; swap the datasource `provider` to `postgresql`, point `DATABASE_URL` at
+Postgres, set `APP_URL`, and move `STORAGE_DIR` to object storage (see `src/lib/storage.ts`).
 
 **Non-goals (held):** no payments, no booking/calendar engine, no native apps, no real-time
 3D hair rendering, no Fresha/Square/Booksy integration (platform-agnostic by link/QR; a
@@ -172,13 +222,15 @@ clean seam is left), no production-grade multi-tenant auth.
 ### Project layout
 
 ```
-prisma/            schema + seed (the curated library + demo data)
+prisma/            schema (incl. Photo + Render) + seed (curated library + demo data)
 src/lib/           spec vocab & types, parse/serialize, summary, diagram math,
                    retention, portable history, render fence, auth, contact key,
-                   specCard (exportable SVG), qr, urls
-src/components/    SpecSheet, HeadDiagram, SpecControls, ShareSpec, client/ and barber/ UIs
+                   specCard (exportable SVG), qr, urls, rateLimit,
+                   storage (stub), specHash (render cache key), angles, photoRender
+src/components/    SpecSheet, HeadDiagram, SpecControls, ShareSpec,
+                   client/ (flow, CaptureFlow, TryOn) and barber/ (incl. BriefMedia) UIs
 src/app/           landing, /s/[slug] client flow, /b/[id] shareable spec, /barber
-                   dashboard, /api routes
+                   dashboard, /api routes (briefs, clients, photos, renders, qr, …)
 ```
 
 ### Useful scripts

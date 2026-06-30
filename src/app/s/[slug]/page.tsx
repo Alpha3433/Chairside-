@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { parseSpecJson } from "@/lib/specSerialize";
 import { generateSummary } from "@/lib/specSummary";
-import { isRenderEnabled } from "@/lib/render";
+import { isRenderEnabled, isVisualizationEnabled } from "@/lib/render";
 import { ClientFlow, type BaseStyleOption } from "@/components/client/ClientFlow";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ export default async function ShopPage({ params }: { params: { slug: string } })
       shopSlug={shop.slug}
       baseStyles={baseStyles}
       renderEnabled={isRenderEnabled()}
+      visualizationEnabled={isVisualizationEnabled()}
     />
   );
 }

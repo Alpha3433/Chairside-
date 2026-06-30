@@ -86,6 +86,19 @@ export async function POST(req: Request) {
     },
   });
 
+  // Attach any captured photos (visualization layer) to this brief — but only
+  // ones that belong to THIS client and aren't already on another brief, so a
+  // caller can't staple someone else's photos onto their brief.
+  const photoIds = Array.isArray(body.photoIds)
+    ? body.photoIds.filter((x): x is string => typeof x === "string").slice(0, 8)
+    : [];
+  if (photoIds.length) {
+    await prisma.photo.updateMany({
+      where: { id: { in: photoIds }, clientId: client.id, briefId: null },
+      data: { briefId: brief.id },
+    });
+  }
+
   return NextResponse.json({ ok: true, briefId: brief.id, clientId: client.id });
 }
 

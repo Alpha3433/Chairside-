@@ -8,8 +8,11 @@ import { BriefActions } from "@/components/barber/BriefActions";
 import { BarberShell } from "@/components/barber/BarberShell";
 import { Badge, Card } from "@/components/ui";
 import { LABELS, type HairType, type Density } from "@/lib/spec";
+import { specHash } from "@/lib/specHash";
 import { formatDate, timeAgo } from "@/lib/format";
 import { briefSharePath } from "@/lib/urls";
+import { BriefMedia, type BriefMediaItem } from "@/components/barber/BriefMedia";
+import { type Angle } from "@/lib/angles";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,27 @@ export default async function BriefDetail({
   const actualSpec = brief.actualSpec ? rowToSpec(brief.actualSpec) : null;
 
   const history = (await getClientHistory(brief.client.id)).filter((h) => h.briefId !== brief.id);
+
+  // Visualization layer: the captured angles + the cached render of the
+  // REQUESTED spec on each (matched by specHash, so changing the spec doesn't
+  // surface stale renders).
+  const photos = await prisma.photo.findMany({ where: { briefId: brief.id } });
+  const reqHash = specHash(requestedSpec);
+  const renders = photos.length
+    ? await prisma.render.findMany({
+        where: { photoId: { in: photos.map((p) => p.id) }, specHash: reqHash },
+      })
+    : [];
+  const renderByPhoto = new Map(renders.filter((r) => r.storageKey).map((r) => [r.photoId, r]));
+  const media: BriefMediaItem[] = photos.map((p) => {
+    const r = renderByPhoto.get(p.id);
+    return {
+      angle: p.angle as Angle,
+      photoUrl: `/api/photos/${p.id}`,
+      renderUrl: r ? `/api/renders/${r.id}` : null,
+      renderStatus: r?.status ?? null,
+    };
+  });
 
   return (
     <BarberShell shopName={shop.name} shopSlug={shop.slug} active="queue">
@@ -109,6 +133,9 @@ export default async function BriefDetail({
           </div>
         ) : null}
       </div>
+
+      {/* Visualization layer: client photos + previews */}
+      <BriefMedia items={media} />
 
       {/* Actions */}
       <div className="mt-6">
