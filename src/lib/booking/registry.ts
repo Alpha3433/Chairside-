@@ -5,6 +5,7 @@
 import type { BookingAdapter, AttachResult } from "./types";
 import { SquareAdapter } from "./square";
 import { ZapierAdapter } from "./zapier";
+import { BooksyAdapter } from "./booksy";
 import { FallbackAdapter } from "./fallback";
 
 export function getAdapter(platform: string): BookingAdapter {
@@ -13,12 +14,14 @@ export function getAdapter(platform: string): BookingAdapter {
       return SquareAdapter;
     case "zapier":
       return ZapierAdapter;
+    case "booksy":
+      return BooksyAdapter;
     default:
       return FallbackAdapter;
   }
 }
 
-export const ADAPTERS: BookingAdapter[] = [SquareAdapter, ZapierAdapter, FallbackAdapter];
+export const ADAPTERS: BookingAdapter[] = [SquareAdapter, ZapierAdapter, BooksyAdapter, FallbackAdapter];
 
 /** Attach a labelled link to the platform dashboard (Tier 1 only; others no-op → null). */
 export async function attachLink(args: {

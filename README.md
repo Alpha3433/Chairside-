@@ -179,8 +179,13 @@ common `BookingAdapter` interface; every tier funnels into ONE pipeline, `src/li
 | Tier | Platform | How | Attach back? |
 | --- | --- | --- | --- |
 | 1 · deep | **Square Appointments** | OAuth + `booking.*` webhook → match/create profile → link; **attach** the brief to the appointment + customer via Custom Attributes | ✅ |
-| 2 · trigger | **Gettimely & others via Zapier** | shop's Zap → our signed inbound webhook → same pipeline → deliver the link to the customer | ✗ (no API) |
-| 3 · universal | **Fresha / closed / walk-ins** | static **desk QR** → "find your booking / I'm a walk-in" | n/a |
+| 2 · trigger | **Gettimely, Booksy\*, & others via Zapier** | shop's Zap → our signed inbound webhook (`platform=booksy`) → same pipeline → deliver the link to the customer | ✗ (no API) |
+| 3 · universal | **Booksy\*, Fresha, closed, walk-ins** | static **desk QR** → "find your booking / I'm a walk-in" | n/a |
+
+\* **Booksy** has no open public API / third-party webhooks (partner-gated), so we don't fabricate a
+deep adapter: it's **Tier 3 by default** (the desk QR covers it) and **Tier 2** only if the shop can
+wire a Zapier/Make "new appointment" trigger. If Booksy grants partner API access, a deep adapter
+slots into the same `BookingAdapter` interface — the seam is in `src/lib/booking/`.
 
 **The token is the vehicle (no PII in URLs, ever).** A static printed QR can't carry identity, so
 identity-bearing onboarding uses a **per-booking token**: opaque, random (256-bit), short-TTL, mapped

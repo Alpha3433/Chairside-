@@ -13,6 +13,7 @@ import { formatDate, timeAgo } from "@/lib/format";
 import { briefSharePath } from "@/lib/urls";
 import { BriefMedia, type BriefMediaItem } from "@/components/barber/BriefMedia";
 import { type Angle } from "@/lib/angles";
+import { platformLabel } from "@/lib/booking/platforms";
 
 export const dynamic = "force-dynamic";
 
@@ -194,16 +195,7 @@ export default async function BriefDetail({
 }
 
 function bookingSourceLabel(platform: string): string {
-  switch (platform) {
-    case "square":
-      return "Square";
-    case "zapier":
-      return "Gettimely / Zapier";
-    case "walk_in":
-      return "walk-in";
-    default:
-      return "desk QR";
-  }
+  return platformLabel(platform);
 }
 
 function syncLabel(status: string | null): string {

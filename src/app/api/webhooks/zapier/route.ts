@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { verifyZapierSecret, normalizeZapier, type ZapierPayload } from "@/lib/booking/zapier";
+import { isTriggerPlatform } from "@/lib/booking/platforms";
 import { onboardBooking } from "@/lib/onboard";
 import { sendBookingLink } from "@/lib/messaging";
 
@@ -28,10 +29,15 @@ export async function POST(req: Request) {
   const shop = await prisma.shop.findUnique({ where: { slug: body.shopSlug } });
   if (!shop) return NextResponse.json({ error: "Unknown shop." }, { status: 404 });
 
+  // Tag the real source platform (e.g. Booksy/Gettimely via a Zap) so the brief
+  // shows the right origin; fall back to a generic "zapier" label.
+  const platform =
+    typeof body.platform === "string" && isTriggerPlatform(body.platform) ? body.platform : "zapier";
+
   const { customer, externalBookingId, appointmentAt } = normalizeZapier(body);
   const result = await onboardBooking({
     shopId: shop.id,
-    platform: "zapier",
+    platform,
     customer,
     externalBookingId,
     appointmentAt,

@@ -22,6 +22,8 @@ export function verifyZapierSecret(provided: string | null): boolean {
 
 export interface ZapierPayload {
   shopSlug?: string;
+  /** The source platform behind the Zap (e.g. "booksy", "gettimely"); defaults to "zapier". */
+  platform?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;

@@ -100,27 +100,29 @@ export default async function IntegrationsPage({
         </p>
       </Card>
 
-      {/* Tier 2 — Zapier */}
+      {/* Tier 2 — Booksy / Gettimely / others via Zapier */}
       <Card className="mb-4 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-semibold text-ink">Gettimely &amp; others, via Zapier</p>
-            <p className="text-xs text-neutral-400">Tier 2 · trigger — a Zap posts new appointments to us</p>
+            <p className="font-semibold text-ink">Booksy, Gettimely &amp; others, via Zapier</p>
+            <p className="text-xs text-neutral-400">Tier 2 · trigger — a Zap/Make scenario posts new appointments to us</p>
           </div>
           <Badge tone={process.env.ZAPIER_WEBHOOK_SECRET ? "green" : "neutral"}>
             {process.env.ZAPIER_WEBHOOK_SECRET ? "Secret set" : "Add secret"}
           </Badge>
         </div>
         <p className="mt-2 text-xs text-neutral-500">
-          Gettimely has no public API — connect it (or any platform) with a Zapier &quot;new
-          appointment&quot; trigger → a Webhooks-by-Zapier POST to:
+          <strong>Booksy</strong> and Gettimely have no open public API. If you can produce a
+          &quot;new appointment&quot; trigger (Zapier / Make), POST it to:
         </p>
         <p className="mt-1 break-all rounded-lg bg-neutral-50 px-3 py-2 text-xs font-medium text-neutral-700">
           POST {zapierUrl} <span className="text-neutral-400">(header X-Chairside-Secret)</span>
         </p>
         <p className="mt-2 text-[11px] text-neutral-400">
-          Body: shopSlug=<code>{shop.slug}</code>, firstName, lastName, phone or email, appointmentAt.
-          We can&apos;t write back into the platform UI, so we deliver the link to the client directly.
+          Body: shopSlug=<code>{shop.slug}</code>, platform=<code>booksy</code>, firstName, lastName,
+          phone or email, appointmentAt. We can&apos;t write back into the platform UI, so the
+          personalized link goes to the client directly. No trigger available? The desk QR below
+          covers Booksy too.
         </p>
       </Card>
 
