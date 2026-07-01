@@ -8,8 +8,12 @@ import { BriefActions } from "@/components/barber/BriefActions";
 import { BarberShell } from "@/components/barber/BarberShell";
 import { Badge, Card } from "@/components/ui";
 import { LABELS, type HairType, type Density } from "@/lib/spec";
+import { specHash } from "@/lib/specHash";
 import { formatDate, timeAgo } from "@/lib/format";
 import { briefSharePath } from "@/lib/urls";
+import { BriefMedia, type BriefMediaItem } from "@/components/barber/BriefMedia";
+import { type Angle } from "@/lib/angles";
+import { platformLabel } from "@/lib/booking/platforms";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +28,7 @@ export default async function BriefDetail({
 
   const brief = await prisma.brief.findUnique({
     where: { id: params.id },
-    include: { client: true, requestedSpec: true, barberSpec: true, actualSpec: true },
+    include: { client: true, requestedSpec: true, barberSpec: true, actualSpec: true, bookingToken: true },
   });
   if (!brief || brief.shopId !== shop.id) notFound();
 
@@ -37,6 +41,27 @@ export default async function BriefDetail({
   const actualSpec = brief.actualSpec ? rowToSpec(brief.actualSpec) : null;
 
   const history = (await getClientHistory(brief.client.id)).filter((h) => h.briefId !== brief.id);
+
+  // Visualization layer: the captured angles + the cached render of the
+  // REQUESTED spec on each (matched by specHash, so changing the spec doesn't
+  // surface stale renders).
+  const photos = await prisma.photo.findMany({ where: { briefId: brief.id } });
+  const reqHash = specHash(requestedSpec);
+  const renders = photos.length
+    ? await prisma.render.findMany({
+        where: { photoId: { in: photos.map((p) => p.id) }, specHash: reqHash },
+      })
+    : [];
+  const renderByPhoto = new Map(renders.filter((r) => r.storageKey).map((r) => [r.photoId, r]));
+  const media: BriefMediaItem[] = photos.map((p) => {
+    const r = renderByPhoto.get(p.id);
+    return {
+      angle: p.angle as Angle,
+      photoUrl: `/api/photos/${p.id}`,
+      renderUrl: r ? `/api/renders/${r.id}` : null,
+      renderStatus: r?.status ?? null,
+    };
+  });
 
   return (
     <BarberShell shopName={shop.name} shopSlug={shop.slug} active="queue">
@@ -55,6 +80,15 @@ export default async function BriefDetail({
             {" · submitted "}
             {timeAgo(brief.createdAt)}
           </p>
+          {brief.bookingToken ? (
+            <p className="mt-1 text-xs text-sky-700">
+              Booked via {bookingSourceLabel(brief.bookingToken.platform)}
+              {brief.bookingToken.appointmentAt
+                ? ` · ${formatDate(brief.bookingToken.appointmentAt)}`
+                : ""}
+              {syncLabel(brief.syncStatus)}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <Badge tone="purple">{LABELS.useCaseTag[brief.useCaseTag as keyof typeof LABELS.useCaseTag] ?? brief.useCaseTag}</Badge>
@@ -110,6 +144,9 @@ export default async function BriefDetail({
         ) : null}
       </div>
 
+      {/* Visualization layer: client photos + previews */}
+      <BriefMedia items={media} />
+
       {/* Actions */}
       <div className="mt-6">
         <BriefActions
@@ -155,4 +192,21 @@ export default async function BriefDetail({
       </div>
     </BarberShell>
   );
+}
+
+function bookingSourceLabel(platform: string): string {
+  return platformLabel(platform);
+}
+
+function syncLabel(status: string | null): string {
+  switch (status) {
+    case "attached":
+      return " · brief pushed to Square ✓";
+    case "stub":
+      return " · attach stubbed (connect Square to push)";
+    case "failed":
+      return " · attach failed";
+    default:
+      return "";
+  }
 }

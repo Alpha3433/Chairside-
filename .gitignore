@@ -29,6 +29,10 @@ yarn-error.log*
 *.db
 *.db-journal
 
+# captured photos + renders (storage stub) — sensitive face data, never commit
+/.uploads/
+/uploads/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

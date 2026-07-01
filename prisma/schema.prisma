@@ -25,16 +25,20 @@ datasource db {
 // Client — portable, shop-agnostic. Keyed to contact. THE moat.
 // ---------------------------------------------------------------------------
 model Client {
-  id        String   @id @default(cuid())
-  name      String
-  contact   String   @unique // phone OR email — the portable key across shops
-  hairType  String // straight | wavy | curly | coily
-  density   String // thin | medium | thick
-  faceShape String? // optional
-  createdAt DateTime @default(now())
+  id             String    @id @default(cuid())
+  name           String
+  contact        String    @unique // phone OR email — the portable key across shops
+  hairType       String // straight | wavy | curly | coily
+  density        String // thin | medium | thick
+  faceShape      String? // optional
+  // When the client consented to capturing/storing face photos (Principle 5).
+  photoConsentAt DateTime?
+  createdAt      DateTime  @default(now())
 
-  briefs Brief[]
-  visits Visit[]
+  briefs        Brief[]
+  visits        Visit[]
+  photos        Photo[] // portable, shop-agnostic — travels with the client
+  bookingTokens BookingToken[]
 }
 
 // ---------------------------------------------------------------------------
@@ -46,9 +50,11 @@ model Shop {
   slug      String   @unique // used in the shareable client link: /s/<slug>
   createdAt DateTime @default(now())
 
-  barbers Barber[]
-  briefs  Brief[]
-  visits  Visit[]
+  barbers       Barber[]
+  briefs        Brief[]
+  visits        Visit[]
+  integrations  ShopIntegration[]
+  bookingTokens BookingToken[]
 }
 
 model Barber {
@@ -152,7 +158,14 @@ model Brief {
   seenAt      DateTime?
   completedAt DateTime?
 
-  visit Visit?
+  // Booking-integration provenance (which tokenized booking produced this brief)
+  // and whether its link was pushed back to the platform dashboard (Tier 1).
+  bookingTokenId String?       @unique
+  bookingToken   BookingToken? @relation(fields: [bookingTokenId], references: [id])
+  syncStatus     String? // null | attached | stub | failed (platform dashboard push)
+
+  visit  Visit?
+  photos Photo[] // captured multi-angle photos attached to this brief
 }
 
 // ---------------------------------------------------------------------------
@@ -174,4 +187,116 @@ model Visit {
   createdAt DateTime @default(now())
 
   @@index([clientId, shopId])
+}
+
+// ---------------------------------------------------------------------------
+// Photo — a captured head/face angle (front | left | right | back).
+//
+// VISUALIZATION LAYER. Photos belong to the portable Client (so they travel
+// across shops) and are linked to a Brief once submitted. `storageKey` is an
+// opaque key into the storage stub (lib/storage.ts) — NEVER a public URL; bytes
+// are served only through the gated /api/photos/[id] route. Faces are sensitive
+// data (Principle 5): consent is recorded on Client.photoConsentAt, and photos
+// are deletable.
+// ---------------------------------------------------------------------------
+model Photo {
+  id         String  @id @default(cuid())
+  clientId   String
+  client     Client  @relation(fields: [clientId], references: [id])
+  briefId    String?
+  brief      Brief?  @relation(fields: [briefId], references: [id])
+  angle      String // front | left | right | back
+  storageKey String // opaque key into the storage backend (not a public path)
+  mimeType   String  @default("image/jpeg")
+  width      Int?
+  height     Int?
+  createdAt  DateTime @default(now())
+
+  renders Render[]
+
+  @@index([clientId])
+  @@index([briefId])
+}
+
+// ---------------------------------------------------------------------------
+// Render — an AI/stub illustration of a chosen spec painted onto a Photo.
+//
+// The render is the LOOK only; it never produces spec NUMBERS (Principle 1).
+// Keyed by (photoId, specHash) so re-viewing the same spec on the same photo
+// reuses the cached render and never re-bills the metered provider (Principle 4).
+// `specHash` is the deterministic hash of the structured Spec (lib/specHash.ts),
+// which is how a brief's requested spec finds its renders without a brittle FK.
+// ---------------------------------------------------------------------------
+model Render {
+  id         String  @id @default(cuid())
+  photoId    String
+  photo      Photo   @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  angle      String // mirrors the source photo's angle
+  specHash   String // hash of the canonical structured spec — cache key + spec linkage
+  storageKey String? // null while pending/failed
+  mimeType   String  @default("image/svg+xml")
+  status     String  @default("done") // done | stub | failed
+  provider   String  @default("stub")
+  createdAt  DateTime @default(now())
+
+  @@unique([photoId, specHash]) // one cached render per (photo, spec content)
+  @@index([specHash])
+}
+
+// ---------------------------------------------------------------------------
+// ShopIntegration — a shop's connection to a booking platform.
+//
+// Tier 1 (square): OAuth tokens + ids, used to read bookings/customers and
+// attach the brief link back via custom attributes. Tier 2 (zapier): a shared
+// webhookSecret the shop's Zap signs with. Secrets here are sensitive — in
+// production, encrypt at rest / use a secrets manager (documented seam).
+// ---------------------------------------------------------------------------
+model ShopIntegration {
+  id             String    @id @default(cuid())
+  shopId         String
+  shop           Shop      @relation(fields: [shopId], references: [id])
+  platform       String // square | zapier
+  status         String    @default("connected") // connected | revoked
+  accessToken    String?
+  refreshToken   String?
+  merchantId     String?
+  locationId     String?
+  tokenExpiresAt DateTime?
+  webhookSecret  String? // per-integration shared secret (Zapier)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([shopId, platform])
+}
+
+// ---------------------------------------------------------------------------
+// BookingToken — the personalized-link vehicle.
+//
+// THE token is opaque + random (≥128-bit) and is the ONLY thing in the URL
+// (/go/<token>); all identity/booking context lives here, server-side, so no
+// PII ever appears in a link. Short-TTL; a light confirmation gates the reveal
+// of anything beyond a first name + appointment time.
+// ---------------------------------------------------------------------------
+model BookingToken {
+  id                 String    @id @default(cuid())
+  token              String    @unique // opaque random — the only thing in the URL
+  shopId             String
+  shop               Shop      @relation(fields: [shopId], references: [id])
+  clientId           String?
+  client             Client?   @relation(fields: [clientId], references: [id])
+  platform           String // square | zapier | fallback | walk_in
+  externalBookingId  String?
+  externalCustomerId String?
+  customerFirstName  String?
+  appointmentAt      DateTime?
+  status             String    @default("pending") // pending | confirmed | consumed | expired
+  confirmedAt        DateTime?
+  consumedAt         DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+
+  brief Brief?
+
+  @@index([shopId])
+  @@index([clientId])
 }

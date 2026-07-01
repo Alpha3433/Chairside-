@@ -129,17 +129,36 @@ export function TextInput({
   onChange,
   placeholder,
   type = "text",
+  name,
+  autoComplete,
+  inputMode,
+  enterKeyHint,
+  autoFocus,
+  maxLength,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  // Autofill/keyboard hints — one-tap autofill beats typing on mobile.
+  name?: string;
+  autoComplete?: string;
+  inputMode?: "text" | "tel" | "email" | "numeric";
+  enterKeyHint?: "go" | "next" | "done" | "search";
+  autoFocus?: boolean;
+  maxLength?: number;
 }) {
   return (
     <input
       type={type}
       value={value}
       placeholder={placeholder}
+      name={name}
+      autoComplete={autoComplete}
+      inputMode={inputMode}
+      enterKeyHint={enterKeyHint}
+      autoFocus={autoFocus}
+      maxLength={maxLength}
       onChange={(e) => onChange(e.target.value)}
       className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-800 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none"
     />
