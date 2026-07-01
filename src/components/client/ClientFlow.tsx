@@ -2,19 +2,24 @@
 
 /**
  * ClientFlow — the mobile-first, no-install client journey:
- *   identity → hair → [capture] → pick → customise → details → review → done
+ *   identity → hair → [capture] → pick → customise → review
  *
- * The optional CAPTURE step is the visualization layer: the client photographs
- * their head (front + sides), then the chosen look is rendered onto their own
- * photo in the customise/details steps (TryOn). Capture is skippable — skipping
- * degrades cleanly to the original text-only brief.
+ * Friction design:
+ *  - Review carries the use-case tag + optional note (one screen fewer than a
+ *    separate "details" step, and no duplicated spec sheets along the way).
+ *  - Identity is remembered on this device (localStorage) so a returning client
+ *    just taps Continue; recognition (the portability moment) runs in the
+ *    background and never blocks the step change.
+ *  - Try-on previews live in a spec-hash-keyed map up here, so they persist
+ *    across steps and returning to a previously previewed look is instant.
  *
- * Recognition (step 1) is the portability moment. The spec is only ever built
- * from structured controls (SpecControls); the renders are illustrative and
- * fenced (Principle 1). On submit the brief carries the captured photo ids.
+ * The spec is only ever built from structured controls (SpecControls); renders
+ * are illustrative and fenced (Principle 1). On submit the brief carries the
+ * captured photo ids (and the booking token, when the client arrived via a
+ * personalized link — in that mode identity never touches the browser).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   type Spec,
   type HairType,
@@ -36,7 +41,7 @@ import { Segmented, TextInput, TextArea, Labeled } from "@/components/controls";
 import { btn, Badge } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { CaptureFlow, type CapturedPhoto } from "./CaptureFlow";
-import { TryOn } from "./TryOn";
+import { TryOn, type RenderMap } from "./TryOn";
 
 export interface BaseStyleOption {
   id: string;
@@ -58,16 +63,6 @@ interface HistoryItem {
   isActual: boolean;
 }
 
-type Step =
-  | "identity"
-  | "hair"
-  | "capture"
-  | "pick"
-  | "customize"
-  | "details"
-  | "review"
-  | "done";
-
 export interface ClientFlowPrefill {
   name: string;
   hairType: string;
@@ -75,11 +70,14 @@ export interface ClientFlowPrefill {
   faceShape: string;
 }
 
+type Step = "identity" | "hair" | "capture" | "pick" | "customize" | "review" | "done";
+
+const IDENTITY_KEY = "chairside.identity";
+
 export function ClientFlow({
   shopName,
   shopSlug,
   baseStyles,
-  renderEnabled,
   visualizationEnabled,
   prefill = null,
   bookingToken = null,
@@ -87,7 +85,6 @@ export function ClientFlow({
   shopName: string;
   shopSlug: string;
   baseStyles: BaseStyleOption[];
-  renderEnabled: boolean;
   visualizationEnabled: boolean;
   // When the client arrived via a personalized booking link, identity is already
   // known (resolved server-side from the token) — skip the identity step and
@@ -98,8 +95,8 @@ export function ClientFlow({
   const identified = !!prefill;
   const stepOrder = (
     visualizationEnabled
-      ? (["identity", "hair", "capture", "pick", "customize", "details", "review"] as Step[])
-      : (["identity", "hair", "pick", "customize", "details", "review"] as Step[])
+      ? (["identity", "hair", "capture", "pick", "customize", "review"] as Step[])
+      : (["identity", "hair", "pick", "customize", "review"] as Step[])
   ).filter((s) => !(identified && s === "identity"));
 
   const [step, setStep] = useState<Step>(identified ? "hair" : "identity");
@@ -107,13 +104,14 @@ export function ClientFlow({
   // identity
   const [name, setName] = useState(prefill?.name ?? "");
   const [contact, setContact] = useState("");
+  const [remembered, setRemembered] = useState(false);
   const [recognized, setRecognized] = useState<{ name: string; history: HistoryItem[] } | null>(null);
-  const [looking, setLooking] = useState(false);
 
-  // hair
+  // hair — background recognition must never clobber values the user has touched.
   const [hairType, setHairType] = useState<HairType>((prefill?.hairType as HairType) ?? "straight");
   const [density, setDensity] = useState<Density>((prefill?.density as Density) ?? "medium");
   const [faceShape, setFaceShape] = useState<FaceShape | "">((prefill?.faceShape as FaceShape) || "");
+  const hairTouched = useRef(false);
 
   // photos (visualization layer)
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
@@ -122,11 +120,13 @@ export function ClientFlow({
   const [baseStyleId, setBaseStyleId] = useState<string | null>(null);
   const [spec, setSpec] = useState<Spec | null>(null);
 
-  // details
+  // try-on previews — keyed by specHash so they persist across steps and
+  // revisiting a previously previewed look is instant (see TryOn).
+  const [renderMap, setRenderMap] = useState<RenderMap>({});
+
+  // review
   const [useCaseTag, setUseCaseTag] = useState<UseCaseTag | null>(null);
   const [notes, setNotes] = useState("");
-  const [renderUrl, setRenderUrl] = useState<string | null>(null);
-  const [rendering, setRendering] = useState(false);
 
   // submit
   const [submitting, setSubmitting] = useState(false);
@@ -137,56 +137,68 @@ export function ClientFlow({
   const stepIndex = stepOrder.indexOf(step);
   const afterHair: Step = visualizationEnabled ? "capture" : "pick";
 
-  async function lookup() {
-    setLooking(true);
-    setError(null);
+  // Remember-me: prefill identity from this device so a returning client just
+  // taps Continue. Device-local only — never in a URL, consistent with the
+  // portability model (the contact IS their key).
+  useEffect(() => {
+    if (identified) return;
     try {
-      const res = await fetch("/api/clients/lookup", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ contact }),
-      });
-      const data = await res.json();
-      if (data.found) {
-        setRecognized({ name: data.client.name, history: data.history });
-        setName(data.client.name);
-        setHairType(data.client.hairType);
-        setDensity(data.client.density);
-        if (data.client.faceShape) setFaceShape(data.client.faceShape);
-      } else {
-        setRecognized(null);
+      const raw = localStorage.getItem(IDENTITY_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { name?: string; contact?: string };
+        if (saved.name && saved.contact) {
+          setName((n) => n || saved.name!);
+          setContact((c) => c || saved.contact!);
+          setRemembered(true);
+        }
       }
     } catch {
-      setRecognized(null);
-    } finally {
-      setLooking(false);
-      setStep("hair");
+      /* storage unavailable — ignore */
     }
+  }, [identified]);
+
+  function clearRemembered() {
+    try {
+      localStorage.removeItem(IDENTITY_KEY);
+    } catch {
+      /* ignore */
+    }
+    setName("");
+    setContact("");
+    setRemembered(false);
+  }
+
+  function continueFromIdentity() {
+    // Advance immediately — recognition is a nicety and must not block the flow.
+    setStep("hair");
+    try {
+      localStorage.setItem(IDENTITY_KEY, JSON.stringify({ name: name.trim(), contact }));
+    } catch {
+      /* ignore */
+    }
+    fetch("/api/clients/lookup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contact }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.found) return;
+        setRecognized({ name: data.client.name, history: data.history });
+        if (data.client.name) setName(data.client.name);
+        if (!hairTouched.current) {
+          setHairType(data.client.hairType);
+          setDensity(data.client.density);
+          if (data.client.faceShape) setFaceShape(data.client.faceShape);
+        }
+      })
+      .catch(() => undefined);
   }
 
   function pickBase(b: BaseStyleOption) {
     setBaseStyleId(b.id);
     setSpec(structuredClone(b.spec));
-    setRenderUrl(null);
     setStep("customize");
-  }
-
-  async function doRender() {
-    if (!spec) return;
-    setRendering(true);
-    try {
-      const res = await fetch("/api/render", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ spec }),
-      });
-      const data = await res.json();
-      setRenderUrl(data.url ?? null);
-    } catch {
-      setRenderUrl(null);
-    } finally {
-      setRendering(false);
-    }
   }
 
   async function submit() {
@@ -240,10 +252,11 @@ export function ClientFlow({
         <Identity
           name={name}
           contact={contact}
-          looking={looking}
+          remembered={remembered}
           onName={setName}
           onContact={setContact}
-          onContinue={lookup}
+          onClearRemembered={clearRemembered}
+          onContinue={continueFromIdentity}
         />
       )}
 
@@ -253,9 +266,18 @@ export function ClientFlow({
           hairType={hairType}
           density={density}
           faceShape={faceShape}
-          onHairType={setHairType}
-          onDensity={setDensity}
-          onFaceShape={setFaceShape}
+          onHairType={(v) => {
+            hairTouched.current = true;
+            setHairType(v);
+          }}
+          onDensity={(v) => {
+            hairTouched.current = true;
+            setDensity(v);
+          }}
+          onFaceShape={(v) => {
+            hairTouched.current = true;
+            setFaceShape(v);
+          }}
           onBack={identified ? undefined : () => setStep("identity")}
           onContinue={() => setStep(afterHair)}
         />
@@ -290,44 +312,30 @@ export function ClientFlow({
           density={density}
           baseName={baseStyles.find((b) => b.id === baseStyleId)?.name}
           photos={photos}
+          renderMap={renderMap}
+          onRenders={setRenderMap}
           onChange={setSpec}
           onBack={() => setStep("pick")}
-          onContinue={() => setStep("details")}
-        />
-      )}
-
-      {step === "details" && spec && (
-        <Details
-          spec={spec}
-          summary={summary}
-          hairType={hairType}
-          density={density}
-          photos={photos}
-          useCaseTag={useCaseTag}
-          notes={notes}
-          renderEnabled={renderEnabled}
-          renderUrl={renderUrl}
-          rendering={rendering}
-          onUseCase={setUseCaseTag}
-          onNotes={setNotes}
-          onRender={doRender}
-          onBack={() => setStep("customize")}
           onContinue={() => setStep("review")}
         />
       )}
 
-      {step === "review" && spec && useCaseTag && (
+      {step === "review" && spec && (
         <Review
           spec={spec}
           summary={summary}
           hairType={hairType}
           density={density}
           baseName={baseStyles.find((b) => b.id === baseStyleId)?.name}
-          useCaseTag={useCaseTag}
-          renderUrl={renderUrl}
           photos={photos}
+          renderMap={renderMap}
+          onRenders={setRenderMap}
+          useCaseTag={useCaseTag}
+          notes={notes}
+          onUseCase={setUseCaseTag}
+          onNotes={setNotes}
           submitting={submitting}
-          onBack={() => setStep("details")}
+          onBack={() => setStep("customize")}
           onSubmit={submit}
         />
       )}
@@ -340,7 +348,6 @@ export function ClientFlow({
           density={density}
           shopName={shopName}
           briefId={briefId}
-          renderUrl={renderUrl}
           photoCount={photos.length}
         />
       )}
@@ -433,35 +440,64 @@ function FooterNav({
 function Identity({
   name,
   contact,
-  looking,
+  remembered,
   onName,
   onContact,
+  onClearRemembered,
   onContinue,
 }: {
   name: string;
   contact: string;
-  looking: boolean;
+  remembered: boolean;
   onName: (v: string) => void;
   onContact: (v: string) => void;
+  onClearRemembered: () => void;
   onContinue: () => void;
 }) {
   const ok = name.trim().length > 0 && isPlausibleContact(contact);
   return (
-    <div>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ok) onContinue();
+      }}
+    >
       <StepTitle
-        title="Let's get your cut right"
-        sub="Just a name and a contact — no app, no account. Your contact keeps your cut history with you, even at a different shop."
+        title={remembered ? `Welcome back${name ? `, ${name.split(" ")[0]}` : ""}` : "Let's get your cut right"}
+        sub={
+          remembered
+            ? "We remembered you on this device — just continue, or fix the details below."
+            : "Just a name and a contact — no app, no account. Your contact keeps your cut history with you, even at a different shop."
+        }
       />
       <div className="space-y-4">
         <Labeled label="Name">
-          <TextInput value={name} onChange={onName} placeholder="Your name" />
+          <TextInput value={name} onChange={onName} placeholder="Your name" name="name" autoComplete="name" enterKeyHint="next" />
         </Labeled>
         <Labeled label="Phone or email" hint="This is your portable key — it loads your history anywhere.">
-          <TextInput value={contact} onChange={onContact} placeholder="you@example.com or 0400 000 000" />
+          <TextInput
+            value={contact}
+            onChange={onContact}
+            placeholder="you@example.com or 0400 000 000"
+            name="contact"
+            autoComplete="email"
+            enterKeyHint="go"
+          />
         </Labeled>
+        {remembered ? (
+          <button
+            type="button"
+            onClick={onClearRemembered}
+            className="text-xs font-medium text-neutral-500 underline hover:text-neutral-800"
+          >
+            Not you? Clear these details
+          </button>
+        ) : null}
       </div>
-      <FooterNav onNext={onContinue} nextDisabled={!ok} loading={looking} nextLabel="Continue" />
-    </div>
+      {/* Hidden submit so the mobile keyboard's Go key advances the form. */}
+      <button type="submit" className="hidden" aria-hidden />
+      <FooterNav onNext={onContinue} nextDisabled={!ok} nextLabel="Continue" />
+    </form>
   );
 }
 
@@ -564,7 +600,7 @@ function Pick({
     <div>
       <StepTitle
         title="Pick a starting point"
-        sub="You'll fine-tune the exact numbers next. These are barber-validated base cuts."
+        sub="You'll fine-tune the exact numbers next."
       />
       <div className="mb-4">
         <Segmented
@@ -583,7 +619,9 @@ function Pick({
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-ink">{b.name}</span>
-              {b.barberValidated ? <Badge tone="green">Validated</Badge> : <Badge tone="amber">Placeholder</Badge>}
+              {/* "Not yet validated" is internal QA state — only the positive
+                  signal is meaningful to a client choosing a cut. */}
+              {b.barberValidated ? <Badge tone="green">Barber-validated</Badge> : null}
             </div>
             <p className="mt-1 text-sm text-neutral-500">{b.description}</p>
             <p className="mt-2 text-xs text-neutral-400">{b.summary}</p>
@@ -608,6 +646,8 @@ function Customize({
   density,
   baseName,
   photos,
+  renderMap,
+  onRenders,
   onChange,
   onBack,
   onContinue,
@@ -618,6 +658,8 @@ function Customize({
   density: Density;
   baseName?: string;
   photos: CapturedPhoto[];
+  renderMap: RenderMap;
+  onRenders: (updater: (prev: RenderMap) => RenderMap) => void;
   onChange: (s: Spec) => void;
   onBack: () => void;
   onContinue: () => void;
@@ -627,7 +669,7 @@ function Customize({
       <StepTitle title="Dial in the details" sub="Every control updates the spec your barber reads. The numbers are the point." />
       {photos.length > 0 ? (
         <div className="mb-4">
-          <TryOn photos={photos} spec={spec} />
+          <TryOn photos={photos} spec={spec} renders={renderMap} onRenders={onRenders} />
         </div>
       ) : null}
       <div className="mb-5">
@@ -639,129 +681,19 @@ function Customize({
   );
 }
 
-function Details({
-  spec,
-  summary,
-  hairType,
-  density,
-  photos,
-  useCaseTag,
-  notes,
-  renderEnabled,
-  renderUrl,
-  rendering,
-  onUseCase,
-  onNotes,
-  onRender,
-  onBack,
-  onContinue,
-}: {
-  spec: Spec;
-  summary: string;
-  hairType: HairType;
-  density: Density;
-  photos: CapturedPhoto[];
-  useCaseTag: UseCaseTag | null;
-  notes: string;
-  renderEnabled: boolean;
-  renderUrl: string | null;
-  rendering: boolean;
-  onUseCase: (v: UseCaseTag) => void;
-  onNotes: (v: string) => void;
-  onRender: () => void;
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  return (
-    <div>
-      <StepTitle
-        title="A little context"
-        sub="Why now? It helps your barber read the room — this tool is for the moments that matter, not 'the usual'."
-      />
-      <Labeled label="What's this visit about?">
-        <div className="grid grid-cols-1 gap-2">
-          {USE_CASE_TAGS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => onUseCase(t)}
-              className={cn(
-                "rounded-xl border px-4 py-3 text-left text-sm font-medium transition",
-                useCaseTag === t
-                  ? "border-neutral-900 bg-neutral-900 text-white"
-                  : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400",
-              )}
-            >
-              {LABELS.useCaseTag[t]}
-            </button>
-          ))}
-        </div>
-      </Labeled>
-
-      <div className="mt-5">
-        <Labeled label="Anything to add for the barber? (optional)">
-          <TextArea
-            value={notes}
-            onChange={onNotes}
-            placeholder="e.g. keep it longer at the front, I have a cowlick on the crown…"
-          />
-        </Labeled>
-      </div>
-
-      {photos.length > 0 ? (
-        <div className="mt-5">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            Preview on your photos
-          </p>
-          <TryOn photos={photos} spec={spec} />
-        </div>
-      ) : (
-        <div className="mt-5 rounded-xl border border-neutral-200 p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-ink">Optional illustration</p>
-            <Badge tone="neutral">Not a guarantee</Badge>
-          </div>
-          <p className="mt-1 text-xs text-neutral-500">
-            A picture can help, but it never sets the numbers — the spec does.
-          </p>
-          {renderEnabled ? (
-            <button type="button" onClick={onRender} disabled={rendering} className={cn(btn.base, btn.secondary, "mt-3 w-full")}>
-              {rendering ? "Generating…" : renderUrl ? "Regenerate illustration" : "Generate illustration"}
-            </button>
-          ) : (
-            <p className="mt-2 text-[11px] text-neutral-400">
-              Rendering is off in this build, so the labelled placeholder below stands in. The spec is
-              unaffected.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="mt-5">
-        <SpecSheet
-          spec={spec}
-          summary={summary}
-          title="Your cut"
-          hairContext={{ hairType, density }}
-          renderUrl={renderUrl}
-          showIllustrationSlot={photos.length === 0}
-        />
-      </div>
-
-      <FooterNav onBack={onBack} onNext={onContinue} nextDisabled={!useCaseTag} />
-    </div>
-  );
-}
-
 function Review({
   spec,
   summary,
   hairType,
   density,
   baseName,
-  useCaseTag,
-  renderUrl,
   photos,
+  renderMap,
+  onRenders,
+  useCaseTag,
+  notes,
+  onUseCase,
+  onNotes,
   submitting,
   onBack,
   onSubmit,
@@ -771,34 +703,79 @@ function Review({
   hairType: HairType;
   density: Density;
   baseName?: string;
-  useCaseTag: UseCaseTag;
-  renderUrl: string | null;
   photos: CapturedPhoto[];
+  renderMap: RenderMap;
+  onRenders: (updater: (prev: RenderMap) => RenderMap) => void;
+  useCaseTag: UseCaseTag | null;
+  notes: string;
+  onUseCase: (v: UseCaseTag) => void;
+  onNotes: (v: string) => void;
   submitting: boolean;
   onBack: () => void;
   onSubmit: () => void;
 }) {
   return (
     <div>
-      <StepTitle title="Review & send to the chair" sub="This is exactly what your barber will see." />
-      <div className="mb-3 flex items-center gap-2">
-        <Badge tone="purple">{LABELS.useCaseTag[useCaseTag]}</Badge>
-        {photos.length > 0 ? <Badge tone="blue">{photos.length} photo{photos.length === 1 ? "" : "s"}</Badge> : null}
+      <StepTitle title="Review & send to the chair" sub="One last thing — what's this visit about? It helps your barber read the room." />
+
+      {/* Plain caption (not <label>): a label would forward caption taps to the
+          first chip and leak its text into every chip's accessible name. */}
+      <div>
+        <span className="block text-xs font-medium uppercase tracking-wide text-neutral-500">
+          What&apos;s this visit about?
+        </span>
+        <div className="mt-1.5 grid grid-cols-2 gap-2" role="group" aria-label="What's this visit about?">
+          {USE_CASE_TAGS.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => onUseCase(t)}
+              className={cn(
+                "rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition",
+                useCaseTag === t
+                  ? "border-neutral-900 bg-neutral-900 text-white"
+                  : "border-neutral-300 bg-white text-neutral-700 hover:border-neutral-400",
+              )}
+            >
+              {LABELS.useCaseTag[t]}
+            </button>
+          ))}
+        </div>
       </div>
+
+      <div className="mt-4">
+        <Labeled label="Anything to add for the barber? (optional)">
+          <TextArea
+            value={notes}
+            onChange={onNotes}
+            rows={2}
+            placeholder="e.g. keep it longer at the front, I have a cowlick on the crown…"
+          />
+        </Labeled>
+      </div>
+
       {photos.length > 0 ? (
-        <div className="mb-4">
-          <TryOn photos={photos} spec={spec} />
+        <div className="mt-5">
+          <TryOn photos={photos} spec={spec} renders={renderMap} onRenders={onRenders} />
         </div>
       ) : null}
-      <SpecSheet
-        spec={spec}
-        summary={summary}
-        title={baseName ?? "Your cut"}
-        hairContext={{ hairType, density }}
-        renderUrl={renderUrl}
-        showIllustrationSlot={photos.length === 0 && !!renderUrl}
+
+      <div className="mt-5">
+        <SpecSheet
+          spec={spec}
+          summary={summary}
+          title={baseName ?? "Your cut"}
+          hairContext={{ hairType, density }}
+        />
+      </div>
+
+      <FooterNav
+        onBack={onBack}
+        onNext={onSubmit}
+        nextLabel={useCaseTag ? "Send to barber" : "Pick what this visit is about"}
+        nextDisabled={!useCaseTag}
+        loading={submitting}
       />
-      <FooterNav onBack={onBack} onNext={onSubmit} nextLabel="Send to barber" loading={submitting} />
     </div>
   );
 }
@@ -810,7 +787,6 @@ function Done({
   density,
   shopName,
   briefId,
-  renderUrl,
   photoCount,
 }: {
   spec: Spec;
@@ -819,7 +795,6 @@ function Done({
   density: Density;
   shopName: string;
   briefId: string | null;
-  renderUrl: string | null;
   photoCount: number;
 }) {
   return (
@@ -840,7 +815,7 @@ function Done({
         </div>
       ) : null}
 
-      <SpecSheet spec={spec} summary={summary} title="Your cut" hairContext={{ hairType, density }} renderUrl={renderUrl} />
+      <SpecSheet spec={spec} summary={summary} title="Your cut" hairContext={{ hairType, density }} />
       <p className="mt-6 text-center text-xs text-neutral-400">
         Your profile and this cut are saved to your contact — they&apos;ll be here next time, at this
         shop or any other.

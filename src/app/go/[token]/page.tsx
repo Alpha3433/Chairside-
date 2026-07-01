@@ -1,27 +1,43 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { parseSpecJson } from "@/lib/specSerialize";
 import { generateSummary } from "@/lib/specSummary";
-import { isRenderEnabled, isVisualizationEnabled } from "@/lib/render";
+import { isVisualizationEnabled } from "@/lib/render";
 import { loadToken } from "@/lib/onboard";
 import { isUsable, phoneTail } from "@/lib/tokens";
+import { briefSharePath } from "@/lib/urls";
 import { GoOnboarding } from "@/components/client/GoOnboarding";
-import type { BaseStyleOption } from "@/components/client/ClientFlow";
+import { ClientFlow, type BaseStyleOption } from "@/components/client/ClientFlow";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The personalized-link landing. Resolves the token SERVER-SIDE and shows only
- * what's needed to orient the user — first name + appointment time — NOT contact
- * details. A light confirmation gate (last digits of phone, or an appointment
- * tap) must pass before the flow proceeds. No PII is ever in the URL.
+ * The personalized-link landing. Resolves the token SERVER-SIDE — no PII is
+ * ever in the URL — and branches on token state to keep friction minimal:
+ *
+ *  - consumed  → the brief already exists; go straight to its spec page
+ *                (reopening the link must never dead-end at a 409 later).
+ *  - confirmed → identity was already proven (the /find disambiguator, or a
+ *                walk-in with nothing to gate) — drop straight into the flow
+ *                with zero contact entry and NO redundant "is this you?" tap.
+ *  - pending   → show only first name + appointment time, gated by the light
+ *                confirmation (last phone digits) before anything else.
  */
 export default async function GoPage({ params }: { params: { token: string } }) {
   const tok = await loadToken(params.token);
+  if (!tok || !tok.client) return <Expired />;
 
-  if (!tok || !isUsable(tok) || !tok.client) {
+  // Already submitted: reopening the link should land on the finished spec.
+  if (tok.status === "consumed") {
+    const brief = await prisma.brief.findFirst({
+      where: { bookingTokenId: tok.id },
+      select: { id: true },
+    });
+    if (brief) redirect(briefSharePath(brief.id));
     return <Expired />;
   }
+
+  if (!isUsable(tok)) return <Expired />;
 
   const bases = await prisma.baseStyle.findMany({ orderBy: { name: "asc" } });
   const baseStyles: BaseStyleOption[] = bases.map((b) => {
@@ -37,9 +53,27 @@ export default async function GoPage({ params }: { params: { token: string } }) 
     };
   });
 
-  // We pass ONLY a first name + appointment time + whether a phone is on file.
-  // The actual contact/hair context is revealed by the confirm route, after the
-  // gate passes — and the contact never reaches the browser at all.
+  // Identity already proven — skip the gate entirely and prefill server-side
+  // (the contact itself never reaches the browser in this mode).
+  if (tok.status === "confirmed") {
+    return (
+      <ClientFlow
+        shopName={tok.shop.name}
+        shopSlug={tok.shop.slug}
+        baseStyles={baseStyles}
+        visualizationEnabled={isVisualizationEnabled()}
+        prefill={{
+          name: tok.client.name,
+          hairType: tok.client.hairType,
+          density: tok.client.density,
+          faceShape: tok.client.faceShape ?? "",
+        }}
+        bookingToken={tok.token}
+      />
+    );
+  }
+
+  // Pending: reveal only a first name + appointment time until confirmed.
   return (
     <GoOnboarding
       token={tok.token}
@@ -49,7 +83,6 @@ export default async function GoPage({ params }: { params: { token: string } }) 
       appointmentAt={tok.appointmentAt ? tok.appointmentAt.toISOString() : null}
       hasPhone={!!phoneTail(tok.client.contact)}
       baseStyles={baseStyles}
-      renderEnabled={isRenderEnabled()}
       visualizationEnabled={isVisualizationEnabled()}
     />
   );

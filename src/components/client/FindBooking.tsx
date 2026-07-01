@@ -27,7 +27,10 @@ export function FindBooking({
   shopSlug: string;
   appointments: Appt[];
 }) {
-  const [mode, setMode] = useState<"home" | "find">(appointments.length ? "home" : "home");
+  // With no appointment list to tap (no readable platform connected — the
+  // common Tier-3 case), land straight on the find form instead of an
+  // interstitial: the form carries its own walk-in escape hatch.
+  const [mode, setMode] = useState<"home" | "find">(appointments.length ? "home" : "find");
   const [firstName, setFirstName] = useState("");
   const [lastDigits, setLastDigits] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -112,18 +115,37 @@ export function FindBooking({
           </button>
         </div>
       ) : (
-        <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">
+        <form
+          className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (firstName.trim() && lastDigits.length >= 3 && busy === null) {
+              call({ mode: "find", firstName, lastDigits }, "find");
+            }
+          }}
+        >
           <p className="text-sm font-semibold text-ink">Find your booking</p>
           <p className="mt-0.5 text-xs text-neutral-500">Just enough to recognise you — nothing typed twice.</p>
           <div className="mt-3 space-y-3">
             <Labeled label="First name">
-              <TextInput value={firstName} onChange={setFirstName} placeholder="First name" />
+              <TextInput
+                value={firstName}
+                onChange={setFirstName}
+                placeholder="First name"
+                name="given-name"
+                autoComplete="given-name"
+                enterKeyHint="next"
+                autoFocus
+              />
             </Labeled>
             <Labeled label="Last 3 digits of your phone">
               <TextInput
                 value={lastDigits}
                 onChange={(v) => setLastDigits(v.replace(/\D/g, "").slice(0, 3))}
                 type="tel"
+                inputMode="numeric"
+                maxLength={3}
+                enterKeyHint="go"
                 placeholder="•••"
               />
             </Labeled>
@@ -134,9 +156,8 @@ export function FindBooking({
             </div>
           ) : null}
           <button
-            type="button"
+            type="submit"
             disabled={busy !== null || !firstName.trim() || lastDigits.length < 3}
-            onClick={() => call({ mode: "find", firstName, lastDigits }, "find")}
             className={cn(btn.base, btn.primary, "mt-4 w-full")}
           >
             {busy === "find" ? "…" : "Continue"}
@@ -154,7 +175,7 @@ export function FindBooking({
               I&apos;m a walk-in
             </button>
           </div>
-        </div>
+        </form>
       )}
 
       <p className="mt-6 text-center text-[11px] text-neutral-400">

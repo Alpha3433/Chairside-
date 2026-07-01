@@ -22,7 +22,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return new Response(bytes, {
     headers: {
       "content-type": photo.mimeType,
-      "cache-control": "private, no-store",
+      // Bytes for a given id are immutable (retakes mint a NEW id), so let the
+      // browser keep them: `private` preserves the no-shared-cache posture while
+      // step changes and re-views stop re-downloading full-resolution images.
+      "cache-control": "private, max-age=86400, immutable",
     },
   });
 }

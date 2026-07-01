@@ -138,13 +138,19 @@ An extension of the client flow's "pick & customise" step — **not a separate a
 spec engine, the base-style library, the portable profile, the data model, and the barber
 dashboard. Web-first, any phone, no install: capture uses the standard `getUserMedia` camera API.
 
-**The flow:** `identity → hair → capture → pick → customise (try-on) → details → review → done`.
+**The flow:** `identity → hair → capture → pick → customise (try-on) → review → done` (the
+use-case tag + optional note live on the review step; identity is remembered on-device so a
+returning client just taps Continue).
 
-- **Guided capture** (`src/components/client/CaptureFlow.tsx`) — consent first (Principle 5), then
-  a silhouette to align to, an angle prompt, and a lightweight brightness/face check for *guidance
-  only* (native `FaceDetector` when available, with a graceful brightness fallback so iOS isn't
-  blocked). Front + both sides are the core set; **back is optional and honestly flagged** (a selfie
-  can't capture it). Per-angle retake; images are compressed client-side before upload.
+- **Guided capture** (`src/components/client/CaptureFlow.tsx`) — consent first (Principle 5, one
+  clearly-labelled tap), then a silhouette to align to, an angle prompt, and a lightweight
+  brightness/face check for *guidance only* (native `FaceDetector` when available, with a graceful
+  brightness fallback so iOS isn't blocked). Front + both sides are the core set; **back is optional
+  and honestly flagged** (a selfie can't capture it). Side shots use a **3s self-timer** (you can't
+  hit the shutter with your head turned); the front camera's saved frame is **mirrored to match the
+  preview**; uploads are **optimistic + background** (retry keeps the frame — no re-posing); and a
+  **file-upload fallback** covers devices with no usable camera. Per-angle retake; images are
+  compressed client-side before upload.
 - **Try-on** (`src/components/client/TryOn.tsx`, `src/lib/photoRender.ts`) — tap renders the look
   onto the client's **front** photo; "Preview all angles" renders the sides on demand. Every render
   is **cached by `(photo, specHash)`** so re-viewing never re-bills (Principle 4). The provider is

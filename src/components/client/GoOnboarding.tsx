@@ -1,13 +1,18 @@
 "use client";
 
 /**
- * GoOnboarding — what a personalized link opens to. Greets the booked client by
- * first name + appointment time (the only things revealed pre-confirmation),
- * gates with a light identity check, then drops them straight into the SAME
- * client flow with NO contact entry (prefilled, bookingToken-carried).
+ * GoOnboarding — what a PENDING personalized link opens to. (Pre-confirmed
+ * tokens — walk-ins and desk-QR "find my booking" — skip this entirely; the
+ * server drops them straight into the flow. See app/go/[token]/page.tsx.)
+ *
+ * Greets the booked client by first name + appointment time (the only things
+ * revealed pre-confirmation), gates with a light identity check, then drops
+ * them into the SAME client flow with NO contact entry (prefilled,
+ * bookingToken-carried). The digits gate auto-submits on the 3rd digit —
+ * typing the digits IS the confirmation; no second tap needed.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClientFlow, type BaseStyleOption } from "./ClientFlow";
 import { TextInput, Labeled } from "@/components/controls";
 import { btn } from "@/components/ui";
@@ -28,7 +33,6 @@ export function GoOnboarding({
   appointmentAt,
   hasPhone,
   baseStyles,
-  renderEnabled,
   visualizationEnabled,
 }: {
   token: string;
@@ -38,13 +42,15 @@ export function GoOnboarding({
   appointmentAt: string | null;
   hasPhone: boolean;
   baseStyles: BaseStyleOption[];
-  renderEnabled: boolean;
   visualizationEnabled: boolean;
 }) {
   const [prefill, setPrefill] = useState<Prefill | null>(null);
   const [digits, setDigits] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Auto-submit each distinct 3-digit value once — a failed guess must be
+  // EDITED before we try again, so fumbles can't burn the rate limit in a loop.
+  const lastTried = useRef<string | null>(null);
 
   const apptLabel = appointmentAt
     ? new Date(appointmentAt).toLocaleString("en-AU", {
@@ -56,14 +62,15 @@ export function GoOnboarding({
       })
     : null;
 
-  async function confirm() {
+  async function confirm(submitDigits?: string) {
+    const d = submitDigits ?? digits;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch(`/api/tokens/${token}/confirm`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(hasPhone ? { digits } : {}),
+        body: JSON.stringify(hasPhone ? { digits: d } : {}),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -78,13 +85,22 @@ export function GoOnboarding({
     }
   }
 
+  // Typing the 3rd digit IS the confirmation — submit without a second tap.
+  useEffect(() => {
+    if (!hasPhone || busy || prefill) return;
+    if (digits.length === 3 && digits !== lastTried.current) {
+      lastTried.current = digits;
+      void confirm(digits);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [digits, hasPhone, busy, prefill]);
+
   if (prefill) {
     return (
       <ClientFlow
         shopName={shopName}
         shopSlug={shopSlug}
         baseStyles={baseStyles}
-        renderEnabled={renderEnabled}
         visualizationEnabled={visualizationEnabled}
         prefill={{
           name: prefill.name,
@@ -116,21 +132,29 @@ export function GoOnboarding({
           <>
             <p className="text-sm font-semibold text-ink">Quick check it&apos;s you</p>
             <p className="mt-0.5 text-xs text-neutral-500">
-              Enter the last 3 digits of your phone number.
+              Enter the last 3 digits of your phone number — that&apos;s it.
             </p>
             <div className="mt-3">
               <Labeled label="Last 3 digits">
-                <TextInput value={digits} onChange={(v) => setDigits(v.replace(/\D/g, "").slice(0, 3))} type="tel" placeholder="•••" />
+                <TextInput
+                  value={digits}
+                  onChange={(v) => setDigits(v.replace(/\D/g, "").slice(0, 3))}
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={3}
+                  autoFocus
+                  placeholder="•••"
+                />
               </Labeled>
             </div>
             {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
             <button
               type="button"
-              onClick={confirm}
+              onClick={() => confirm()}
               disabled={busy || digits.length < 3}
               className={cn(btn.base, btn.primary, "mt-4 w-full")}
             >
-              {busy ? "…" : "That's me — continue"}
+              {busy ? "Checking…" : "That's me — continue"}
             </button>
           </>
         ) : (
@@ -142,7 +166,7 @@ export function GoOnboarding({
             {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
             <button
               type="button"
-              onClick={confirm}
+              onClick={() => confirm()}
               disabled={busy}
               className={cn(btn.base, btn.primary, "mt-4 w-full")}
             >

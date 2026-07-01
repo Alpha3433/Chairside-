@@ -25,16 +25,24 @@ const EXT: Record<string, string> = {
  * Bytes go to the storage stub (never /public); only the row id is returned.
  */
 export async function POST(req: Request) {
-  if (!rateLimit(`photo-up:${clientIp(req)}`, 60, 60_000)) {
-    return bad("Too many uploads — please wait a moment.", 429);
-  }
-
   let form: FormData;
   try {
     form = await req.formData();
   } catch {
     return bad("Expected multipart form data.");
   }
+
+  // Rate-limit per IDENTITY (token or contact) when we have one: a whole shop's
+  // clients share one Wi-Fi IP, and a per-IP-only cap would 429 legitimate
+  // capture bursts at rush hour. A looser per-IP ceiling stays as the abuse
+  // backstop for requests with no identity at all.
+  const identityKey =
+    String(form.get("bookingToken") ?? "") || String(form.get("contact") ?? "");
+  const limitOk = identityKey
+    ? rateLimit(`photo-up:id:${identityKey}`, 30, 60_000) &&
+      rateLimit(`photo-up:ip:${clientIp(req)}`, 300, 60_000)
+    : rateLimit(`photo-up:ip:${clientIp(req)}`, 60, 60_000);
+  if (!limitOk) return bad("Too many uploads — please wait a moment.", 429);
 
   const bookingToken = String(form.get("bookingToken") ?? "");
   const contactRaw = String(form.get("contact") ?? "");

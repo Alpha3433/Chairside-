@@ -34,7 +34,11 @@ export function isUsable(t: TokenLike, now: Date = new Date()): boolean {
 
 /** Trailing digits of a phone contact (for the light confirmation gate). */
 export function phoneTail(contact: string | null | undefined, n = 3): string | null {
+  // Only genuine phone-shaped contacts qualify. Synthetic keys (e.g. the
+  // "walkin:<random>" contact minted for contactless walk-ins) contain letters
+  // and would otherwise present a digits gate the user can never pass.
   if (!contact || contact.includes("@")) return null;
+  if (!/^\+?[\d\s\-().]+$/.test(contact)) return null;
   const digits = contact.replace(/\D/g, "");
   return digits.length >= n ? digits.slice(-n) : null;
 }

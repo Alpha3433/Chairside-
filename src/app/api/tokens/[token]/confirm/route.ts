@@ -25,6 +25,10 @@ export async function POST(req: Request, { params }: { params: { token: string }
   if (!tok || !isUsable(tok) || !tok.client) {
     return NextResponse.json({ error: "This link has expired." }, { status: 410 });
   }
+  if (tok.status === "consumed") {
+    // The brief already exists — /go/<token> redirects there; nothing to confirm.
+    return NextResponse.json({ error: "This booking already has a brief." }, { status: 409 });
+  }
 
   let digits = "";
   try {

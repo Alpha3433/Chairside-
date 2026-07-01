@@ -51,15 +51,16 @@ export async function POST(req: Request) {
     throw e;
   }
 
-  const photo = await prisma.photo.findUnique({ where: { id: photoId } });
-  if (!photo) return bad("Unknown photo.", 404);
-
   const hash = specHash(spec);
 
+  // Independent lookups — run together (the cache-hit path is the hot one).
+  const [photo, cached] = await Promise.all([
+    prisma.photo.findUnique({ where: { id: photoId } }),
+    prisma.render.findUnique({ where: { photoId_specHash: { photoId, specHash: hash } } }),
+  ]);
+  if (!photo) return bad("Unknown photo.", 404);
+
   // Cache hit — never re-bill.
-  const cached = await prisma.render.findUnique({
-    where: { photoId_specHash: { photoId, specHash: hash } },
-  });
   if (cached && cached.storageKey) {
     return NextResponse.json({
       id: cached.id,

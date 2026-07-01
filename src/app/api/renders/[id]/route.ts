@@ -19,7 +19,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return new Response(bytes, {
     headers: {
       "content-type": render.mimeType,
-      "cache-control": "private, no-store",
+      // A render id's bytes never change (cache hits return the same id), so
+      // `private` browser caching makes re-viewing a look instant and free.
+      "cache-control": "private, max-age=86400, immutable",
     },
   });
 }
